@@ -62,7 +62,7 @@ if ("serviceWorker" in navigator) {
 
 map.addControl(new maplibregl.NavigationControl(), "top-right");
 
-map.on("load", () => {
+map.once("style.load", () => {
   startHazardLayer(map);
 
   map.addSource("device-location", {
