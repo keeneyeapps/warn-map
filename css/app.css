@@ -70,9 +70,52 @@ body {
   display: none;
 }
 
+.hazard-status {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  left: max(12px, env(safe-area-inset-left));
+  z-index: 3;
+  max-width: min(360px, calc(100vw - 32px));
+  padding: 8px 10px;
+  border-left: 3px solid #53c7a2;
+  background: rgb(23 27 29 / 94%);
+  color: #f4f3ed;
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+.hazard-status.is-stale {
+  border-left-color: #ffbd4a;
+  color: #ffcf78;
+}
+
+.hazard-popup h2 {
+  margin: 0 0 4px;
+  color: #171b1d;
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.hazard-popup p {
+  margin: 4px 0 0;
+  color: #353b3d;
+  font-size: 12px;
+}
+
+.hazard-popup .hazard-popup-category {
+  margin-top: 0;
+  color: #586164;
+  font-weight: 600;
+}
+
 @media (max-width: 360px) {
   .map-controls {
     bottom: max(72px, env(safe-area-inset-bottom));
+  }
+
+  .hazard-status {
+    top: max(78px, env(safe-area-inset-top));
   }
 }
 

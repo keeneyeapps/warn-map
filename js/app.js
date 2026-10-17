@@ -1,4 +1,5 @@
 import * as maplibregl from "../vendor/maplibre-gl.js";
+import { startHazardLayer } from "./hazards.js";
 import { createMap } from "./map.js";
 
 const map = createMap("map");
@@ -8,6 +9,8 @@ const locateButton = document.querySelector("#locate");
 map.addControl(new maplibregl.NavigationControl(), "top-right");
 
 map.on("load", () => {
+  startHazardLayer(map);
+
   map.addSource("device-location", {
     type: "geojson",
     data: { type: "FeatureCollection", features: [] },
