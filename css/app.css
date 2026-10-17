@@ -70,6 +70,12 @@ body {
   display: none;
 }
 
+@media (max-width: 360px) {
+  .map-controls {
+    bottom: max(72px, env(safe-area-inset-bottom));
+  }
+}
+
 .maplibregl-ctrl-attrib {
   font-size: 10px;
 }
