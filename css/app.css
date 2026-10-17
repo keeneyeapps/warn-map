@@ -47,7 +47,10 @@ body {
 
 #locate,
 #route-to-here,
-#clear-route {
+#start-here,
+#add-stop,
+#clear-route,
+#settings-toggle {
   min-height: 44px;
   padding: 0 16px;
   border: 1px solid rgb(255 255 255 / 22%);
@@ -63,6 +66,8 @@ body {
 
 #locate:hover,
 #route-to-here:hover,
+#start-here:hover,
+#add-stop:hover,
 #clear-route:hover {
   background: #fff;
 }
@@ -73,7 +78,11 @@ body {
 
 #locate:focus-visible,
 #route-to-here:focus-visible,
-#clear-route:focus-visible {
+#start-here:focus-visible,
+#add-stop:focus-visible,
+#clear-route:focus-visible,
+#settings-toggle:focus-visible,
+#fare-rate:focus-visible {
   outline: 3px solid #53c7a2;
   outline-offset: 3px;
 }
@@ -111,7 +120,7 @@ body {
 .route-hazards-panel {
   display: grid;
   overflow: hidden;
-  max-height: min(44vh, 360px);
+  max-height: min(56vh, 440px);
   border: 1px solid rgb(255 255 255 / 14%);
   border-radius: 4px;
   background: rgb(23 27 29 / 96%);
@@ -121,7 +130,7 @@ body {
 }
 
 .route-hazards-panel[hidden],
-.route-hazards-list[hidden] {
+.route-panel-body[hidden] {
   display: none;
 }
 
@@ -166,11 +175,191 @@ body {
   transform: rotate(-45deg);
 }
 
-.route-hazards-list {
-  display: grid;
+.route-panel-body {
   overflow-y: auto;
   overscroll-behavior: contain;
-  max-height: calc(min(44vh, 360px) - 40px);
+  max-height: calc(min(56vh, 440px) - 40px);
+}
+
+.route-hazards-list {
+  display: grid;
+}
+
+.route-plan {
+  border-bottom: 1px solid rgb(255 255 255 / 10%);
+}
+
+.route-plan:empty {
+  display: none;
+}
+
+.route-legs {
+  display: grid;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+}
+
+.route-leg {
+  display: grid;
+  grid-template-columns: 24px 20px minmax(0, 1fr) max-content 28px;
+  align-items: center;
+  column-gap: 6px;
+  min-height: 38px;
+  padding: 2px 6px;
+  background: rgb(23 27 29 / 96%);
+  font-size: 12px;
+}
+
+.route-leg.is-dragging {
+  position: relative;
+  z-index: 1;
+  background: #303a3b;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 40%);
+}
+
+.route-leg-handle {
+  grid-column: 1;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #b9c4c3;
+  cursor: grab;
+  touch-action: none;
+}
+
+.route-leg-handle::before {
+  content: "";
+  width: 8px;
+  height: 14px;
+  background-image: radial-gradient(circle, currentColor 1.3px, transparent 1.6px);
+  background-size: 4px 4.67px;
+}
+
+.route-leg.is-dragging .route-leg-handle {
+  cursor: grabbing;
+}
+
+.route-leg-badge {
+  grid-column: 2;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #f4f3ed;
+  color: #171b1d;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.route-leg-start .route-leg-badge {
+  border-radius: 3px;
+  background: #ffbd4a;
+}
+
+.route-leg-destination .route-leg-badge {
+  background: #54dfb3;
+  color: #10211d;
+}
+
+.route-leg-label {
+  grid-column: 3;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-leg-distances {
+  grid-column: 4;
+  display: grid;
+  justify-items: end;
+  color: #b9c4c3;
+  line-height: 1.25;
+}
+
+.route-leg-distance {
+  color: #76e8c1;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.route-leg-running {
+  font-size: 10px;
+}
+
+.route-leg-remove {
+  grid-column: 5;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #c4cecc;
+  font: inherit;
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.route-leg-handle:hover,
+.route-leg-remove:hover {
+  background: rgb(255 255 255 / 8%);
+}
+
+.route-leg-handle:focus-visible,
+.route-leg-remove:focus-visible,
+.route-plan-button:focus-visible {
+  outline: 2px solid #54dfb3;
+  outline-offset: -2px;
+}
+
+.route-total {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin: 0;
+  padding: 7px 10px 8px;
+  border-top: 1px solid rgb(255 255 255 / 8%);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.route-fare {
+  color: #ffd27d;
+}
+
+.route-plan-hint {
+  margin: 0;
+  padding: 2px 12px 8px;
+  color: #c4cecc;
+  font-size: 11px;
+}
+
+.route-plan-button {
+  margin: 0 10px 8px;
+  padding: 5px 9px;
+  border: 1px solid rgb(255 189 74 / 55%);
+  border-radius: 3px;
+  background: rgb(255 189 74 / 10%);
+  color: #ffd27d;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.route-plan-button:hover {
+  background: rgb(255 189 74 / 20%);
 }
 
 .route-hazard-row {
@@ -353,4 +542,82 @@ body {
 
 #route-hint {
   color: #d6dfdc;
+}
+.route-menu {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  max-width: calc(100vw - 32px);
+}
+
+#start-here {
+  border-color: #ffbd4a;
+  background: #ffbd4a;
+  color: #241a06;
+}
+
+#start-here:hover {
+  background: #ffcb6e;
+}
+
+#settings-toggle {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  padding: 0;
+  background: #252d2e;
+  color: #f4f3ed;
+}
+
+#settings-toggle:hover,
+#settings-toggle[aria-expanded="true"] {
+  background: #3a4546;
+}
+
+.settings-panel {
+  display: grid;
+  gap: 5px;
+  padding: 9px 10px;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 4px;
+  background: rgb(23 27 29 / 96%);
+  color: #f4f3ed;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 3px 14px rgb(0 0 0 / 32%);
+}
+
+#fare-rate {
+  width: 140px;
+  min-height: 36px;
+  padding: 0 8px;
+  border: 1px solid rgb(255 255 255 / 24%);
+  border-radius: 3px;
+  background: #252d2e;
+  color: #f4f3ed;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.route-marker {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 2px solid #171b1d;
+  border-radius: 50%;
+  background: #f4f3ed;
+  color: #171b1d;
+  font: 700 11px/1 "Noto Sans", "Segoe UI", sans-serif;
+  box-shadow: 0 1px 6px rgb(0 0 0 / 45%);
+}
+
+.route-marker-start {
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  background: #ffbd4a;
+  color: #241a06;
 }

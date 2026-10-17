@@ -1,3 +1,4 @@
+import * as maplibregl from "../vendor/maplibre-gl.js";
 import { formatHazardAge, openHazardPopup } from "./hazards.js";
 import { hazardsAlongRoute } from "./route-hazards.js";
 
@@ -5,6 +6,8 @@ const SOURCE_ID = "computed-route";
 const CASING_LAYER_ID = "computed-route-casing";
 const LINE_LAYER_ID = "computed-route-line";
 const HINT_KEY = "warn-map-route-hint-dismissed";
+const FARE_RATE_KEY = "warn-map-fare-rate";
+const METERS_PER_MILE = 1609.344;
 
 function validPoint(point) {
   return Array.isArray(point) && point.length === 2
@@ -25,10 +28,57 @@ function routeBounds(coordinates) {
   return [[west, south], [east, north]];
 }
 
+function milesInTenths(distanceM) {
+  return Math.round(distanceM / METERS_PER_MILE * 10);
+}
+
+function formatTenths(tenths) {
+  return `${(tenths / 10).toFixed(1)} mi`;
+}
+
+function formatMiles(distanceM) {
+  return formatTenths(milesInTenths(distanceM));
+}
+
+function formatMinutes(seconds) {
+  return `${Math.ceil(seconds / 60)} min`;
+}
+
 function formatRouteStatus(route) {
-  const miles = route.totalDistanceM / 1609.344;
-  const minutes = Math.ceil(route.estimatedTimeSeconds / 60);
-  return `Route ${miles.toFixed(1)} mi · ${minutes} min`;
+  return `Route ${formatMiles(route.totalDistanceM)} · ${formatMinutes(route.estimatedTimeSeconds)}`;
+}
+
+function joinLegs(legRoutes) {
+  const geometry = [];
+  const edgeIndices = [];
+  let totalDistanceM = 0;
+  let estimatedTimeSeconds = 0;
+  for (const leg of legRoutes) {
+    const first = leg.geometry[0];
+    const last = geometry[geometry.length - 1];
+    const sharesJoint = Boolean(first && last && first[0] === last[0] && first[1] === last[1]);
+    const offset = geometry.length - (sharesJoint ? 1 : 0);
+    geometry.push(...(sharesJoint ? leg.geometry.slice(1) : leg.geometry));
+    for (const edge of leg.edgeIndices || []) {
+      edgeIndices.push({
+        ...edge,
+        start_m: edge.start_m + totalDistanceM,
+        end_m: edge.end_m + totalDistanceM,
+        geometry_start_index: edge.geometry_start_index + offset,
+        geometry_end_index: edge.geometry_end_index + offset,
+      });
+    }
+    totalDistanceM += leg.totalDistanceM;
+    estimatedTimeSeconds += leg.estimatedTimeSeconds;
+  }
+  return {
+    totalDistanceM,
+    estimatedTimeSeconds,
+    geometry,
+    edgeIndices,
+    startSnap: legRoutes[0].startSnap,
+    endSnap: legRoutes[legRoutes.length - 1].endSnap,
+  };
 }
 
 export function setupRouting(map, {
@@ -38,21 +88,39 @@ export function setupRouting(map, {
 }) {
   const routeStatus = document.querySelector("#route-status");
   const routeHint = document.querySelector("#route-hint");
+  const routeMenu = document.querySelector("#route-menu");
   const routeAction = document.querySelector("#route-to-here");
+  const startHereButton = document.querySelector("#start-here");
+  const addStopButton = document.querySelector("#add-stop");
   const clearRouteButton = document.querySelector("#clear-route");
   const hazardsPanel = document.querySelector("#route-hazards-panel");
   const hazardsToggle = document.querySelector("#route-hazards-toggle");
   const hazardsTitle = document.querySelector("#route-hazards-title");
+  const panelBody = document.querySelector("#route-panel-body");
+  const planElement = document.querySelector("#route-plan");
   const hazardsList = document.querySelector("#route-hazards-list");
+  const settingsToggle = document.querySelector("#settings-toggle");
+  const settingsPanel = document.querySelector("#settings-panel");
+  const fareRateInput = document.querySelector("#fare-rate");
   const worker = new Worker(new URL("./routing-worker.js", import.meta.url), { type: "module" });
   const pendingRequests = new Map();
   let requestId = 0;
   let workerLoadTimeMs = null;
   let graphTransfer = null;
-  let destination = null;
+  let pendingPoint = null;
+  let customStart = null;
+  let stops = [];
+  let nextStopId = 0;
+  let destinationPoint = null;
+  let legs = [];
+  let planVersion = 0;
+  let startMarker = null;
+  let stopMarkers = [];
+  let dragState = null;
+  let planRenderPending = false;
+  let fareRateText = "";
   let activeRoute = null;
   let routeStartPoint = null;
-  let routeDestinationPoint = null;
   let baseRouteDistanceM = 0;
   let avoidClosures = [];
   let avoidNotice = "";
@@ -134,11 +202,72 @@ export function setupRouting(map, {
     routeHint.hidden = false;
   }
 
+  try {
+    fareRateText = localStorage.getItem(FARE_RATE_KEY) ?? "";
+  } catch {
+    fareRateText = "";
+  }
+  fareRateInput.value = fareRateText;
+
+  function fareRate() {
+    const rate = Number.parseFloat(fareRateText);
+    return Number.isFinite(rate) && rate > 0 ? rate : null;
+  }
+
+  function hasPlan() {
+    return Boolean(activeRoute || customStart || destinationPoint || stops.length > 0);
+  }
+
+  function setRouteStatus(message = "") {
+    routeStatus.textContent = customStart
+      ? (message ? `From pin · ${message}` : "From pin")
+      : message;
+  }
+
+  function routeSummaryStatus() {
+    if (!activeRoute) return "";
+    if (avoidClosures.length === 0) return formatRouteStatus(activeRoute);
+    const extraTenths = Math.max(0,
+      milesInTenths(activeRoute.totalDistanceM) - milesInTenths(baseRouteDistanceM));
+    const noun = avoidClosures.length === 1 ? "closure" : "closures";
+    return `Avoiding ${avoidClosures.length} ${noun} · +${formatTenths(extraTenths)}`;
+  }
+
+  function markerElement(className, text, label) {
+    const element = document.createElement("div");
+    element.className = `route-marker ${className}`;
+    element.textContent = text;
+    element.setAttribute("role", "img");
+    element.setAttribute("aria-label", label);
+    return element;
+  }
+
+  function updateMarkers() {
+    if (customStart && !startMarker) {
+      startMarker = new maplibregl.Marker({
+        element: markerElement("route-marker-start", "S", "Route start pin"),
+      }).setLngLat(customStart).addTo(map);
+    } else if (customStart) {
+      startMarker.setLngLat(customStart);
+    } else if (startMarker) {
+      startMarker.remove();
+      startMarker = null;
+    }
+    for (const marker of stopMarkers) marker.remove();
+    stopMarkers = stops.map((stop, index) => new maplibregl.Marker({
+      element: markerElement("route-marker-stop", String(index + 1), `Stop ${index + 1}`),
+    }).setLngLat(stop.point).addTo(map));
+  }
+
   function closureKey(feature) {
     const id = feature.id ?? feature.properties.id;
     return id === undefined || id === null
       ? `${feature.geometry.coordinates[0]},${feature.geometry.coordinates[1]}`
       : String(id);
+  }
+
+  function blockedPointsFor(closures) {
+    return closures.map(({ id, point, radiusM }) => ({ id, point, radiusM }));
   }
 
   function showAvoidNotice() {
@@ -152,18 +281,165 @@ export function setupRouting(map, {
     }, 5000);
   }
 
+  function syncPanelVisibility() {
+    hazardsPanel.hidden = !hasPlan();
+    clearRouteButton.hidden = !hasPlan();
+  }
+
+  function waypointRow({ kind, badge, label, legIndex = null, cumulative = [], stop = null, stopIndex = null }) {
+    const row = document.createElement("li");
+    row.className = `route-leg route-leg-${kind}`;
+
+    if (stop) {
+      row.dataset.stopId = String(stop.id);
+      const handle = document.createElement("button");
+      handle.className = "route-leg-handle";
+      handle.type = "button";
+      handle.title = "Drag to reorder";
+      handle.setAttribute("aria-label", `Reorder stop ${stopIndex + 1}`);
+      handle.addEventListener("pointerdown", (event) => startStopDrag(event, stopIndex));
+      handle.addEventListener("keydown", (event) => {
+        if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+        event.preventDefault();
+        moveStop(stopIndex, stopIndex + (event.key === "ArrowUp" ? -1 : 1), true);
+      });
+      row.append(handle);
+    }
+
+    const badgeElement = document.createElement("span");
+    badgeElement.className = "route-leg-badge";
+    badgeElement.textContent = badge;
+    badgeElement.setAttribute("aria-hidden", "true");
+
+    const labelElement = document.createElement("span");
+    labelElement.className = "route-leg-label";
+    labelElement.textContent = label;
+    row.append(badgeElement, labelElement);
+
+    if (legIndex !== null) {
+      const distances = document.createElement("span");
+      distances.className = "route-leg-distances";
+      if (cumulative.length > legIndex) {
+        const previous = legIndex > 0 ? cumulative[legIndex - 1] : 0;
+        const legDistance = document.createElement("span");
+        legDistance.className = "route-leg-distance";
+        legDistance.textContent = formatTenths(cumulative[legIndex] - previous);
+        const running = document.createElement("span");
+        running.className = "route-leg-running";
+        running.textContent = `${formatTenths(cumulative[legIndex])} total`;
+        distances.append(legDistance, running);
+      } else {
+        distances.textContent = "…";
+      }
+      row.append(distances);
+    }
+
+    if (stop) {
+      const remove = document.createElement("button");
+      remove.className = "route-leg-remove";
+      remove.type = "button";
+      remove.textContent = "×";
+      remove.setAttribute("aria-label", `Remove stop ${stopIndex + 1}`);
+      remove.addEventListener("click", () => removeStop(stopIndex));
+      row.append(remove);
+    }
+    return row;
+  }
+
+  function renderPlan() {
+    if (dragState) {
+      planRenderPending = true;
+      return;
+    }
+    planRenderPending = false;
+    syncPanelVisibility();
+    planElement.replaceChildren();
+    if (!hasPlan()) return;
+
+    const legsCurrent = Boolean(destinationPoint && activeRoute && legs.length === stops.length + 1);
+    const cumulative = [];
+    let runningM = 0;
+    if (legsCurrent) {
+      for (const leg of legs) {
+        runningM += leg.distanceM;
+        cumulative.push(milesInTenths(runningM));
+      }
+    }
+
+    const list = document.createElement("ol");
+    list.className = "route-legs";
+    list.setAttribute("aria-label", "Route legs");
+    list.append(waypointRow({
+      kind: "start",
+      badge: "S",
+      label: customStart ? "Start · pin" : "Start · your location",
+    }));
+    stops.forEach((stop, index) => {
+      list.append(waypointRow({
+        kind: "stop",
+        badge: String(index + 1),
+        label: `Stop ${index + 1}`,
+        legIndex: destinationPoint ? index : null,
+        cumulative,
+        stop,
+        stopIndex: index,
+      }));
+    });
+    if (destinationPoint) {
+      list.append(waypointRow({
+        kind: "destination",
+        badge: "D",
+        label: "Destination",
+        legIndex: stops.length,
+        cumulative,
+      }));
+    }
+    planElement.append(list);
+
+    if (legsCurrent) {
+      const totalTenths = cumulative[cumulative.length - 1];
+      const total = document.createElement("p");
+      total.className = "route-total";
+      const totalText = document.createElement("span");
+      totalText.className = "route-total-distance";
+      totalText.textContent = `Total ${formatTenths(totalTenths)} · ${formatMinutes(activeRoute.estimatedTimeSeconds)}`;
+      total.append(totalText);
+      const rate = fareRate();
+      if (rate !== null) {
+        const fare = document.createElement("span");
+        fare.className = "route-fare";
+        fare.textContent = `Fare at $${rate.toFixed(2)}/mi: $${(Math.round(totalTenths * rate * 10) / 100).toFixed(2)}`;
+        total.append(fare);
+      }
+      planElement.append(total);
+    } else if (!destinationPoint) {
+      const hint = document.createElement("p");
+      hint.className = "route-plan-hint";
+      hint.textContent = "Tap and hold the map, then choose Route to here.";
+      planElement.append(hint);
+    }
+
+    if (customStart) {
+      const useLocation = document.createElement("button");
+      useLocation.className = "route-plan-button";
+      useLocation.type = "button";
+      useLocation.textContent = "Use my location";
+      useLocation.addEventListener("click", useMyLocation);
+      planElement.append(useLocation);
+    }
+  }
+
   function renderRouteHazards() {
+    syncPanelVisibility();
+    hazardsList.replaceChildren();
     if (!activeRoute) {
-      hazardsPanel.hidden = true;
-      hazardsList.replaceChildren();
       routeHazardRows = [];
+      hazardsTitle.textContent = "Route plan";
       return;
     }
 
-    hazardsPanel.hidden = false;
     const onRouteCount = routeHazardRows.filter((row) => !row.offRoute).length;
-    hazardsTitle.textContent = `${onRouteCount} ${onRouteCount === 1 ? "hazard" : "hazards"} on your route`;
-    hazardsList.replaceChildren();
+    hazardsTitle.textContent = `${onRouteCount} reported ${onRouteCount === 1 ? "hazard" : "hazards"} along your route`;
     if (avoidNotice) {
       const notice = document.createElement("p");
       notice.className = "route-avoid-notice";
@@ -174,7 +450,7 @@ export function setupRouting(map, {
     if (routeHazardRows.length === 0) {
       const emptyMessage = document.createElement("p");
       emptyMessage.className = "route-hazards-empty";
-      emptyMessage.textContent = "No hazards on your route";
+      emptyMessage.textContent = "No reported hazards along your route";
       hazardsList.append(emptyMessage);
       return;
     }
@@ -204,7 +480,7 @@ export function setupRouting(map, {
 
       const distance = document.createElement("span");
       distance.className = "route-hazard-distance";
-      distance.textContent = `${(row.distanceAheadM / 1609.344).toFixed(1)} mi`;
+      distance.textContent = formatMiles(row.distanceAheadM);
 
       const age = document.createElement("span");
       age.className = "route-hazard-age";
@@ -231,8 +507,9 @@ export function setupRouting(map, {
   }
 
   function recomputeRouteHazards() {
+    // A custom start means the phone is not on the route, so nothing is "behind" it.
     const rows = activeRoute
-      ? hazardsAlongRoute(hazardFeatures, activeRoute, liveFix)
+      ? hazardsAlongRoute(hazardFeatures, activeRoute, customStart ? null : liveFix)
       : [];
     const rowByKey = new Map(rows.map((row) => [closureKey(row.feature), row]));
     for (const closure of avoidClosures) {
@@ -253,8 +530,45 @@ export function setupRouting(map, {
     recomputeRouteHazards();
   }
 
+  function requestWorkerRoute(start, end, blockedPoints = []) {
+    if (!validPoint(start) || !validPoint(end)) {
+      return Promise.reject(new Error("Route coordinates are invalid."));
+    }
+    const id = ++requestId;
+    return new Promise((resolve, reject) => {
+      pendingRequests.set(id, { resolve, reject });
+      worker.postMessage({ type: "route", requestId: id, start, destination: end, blockedPoints });
+    });
+  }
+
+  async function routeChain(points, blockedPoints = []) {
+    const results = await Promise.all(points.slice(1).map(
+      (point, index) => requestWorkerRoute(points[index], point, blockedPoints),
+    ));
+    const affected = new Set();
+    for (const result of results) {
+      for (const id of result.blockedPointsAffected || []) affected.add(String(id));
+    }
+    const failed = results.find((result) => !result.route);
+    if (failed) {
+      return { route: null, reason: failed.reason, blockedPointsAffected: [...affected] };
+    }
+    return {
+      route: joinLegs(results.map((result) => result.route)),
+      legs: results.map((result) => ({
+        distanceM: result.route.totalDistanceM,
+        timeSeconds: result.route.estimatedTimeSeconds,
+      })),
+      blockedPointsAffected: [...affected],
+    };
+  }
+
+  function currentPoints(start) {
+    return [start, ...stops.map((stop) => stop.point), destinationPoint];
+  }
+
   async function toggleClosureAvoidance(row) {
-    if (avoidPending || !routeStartPoint || !routeDestinationPoint || !activeRoute) return;
+    if (avoidPending || !routeStartPoint || !destinationPoint || !activeRoute) return;
     const key = closureKey(row.feature);
     const alreadyAvoided = avoidClosures.some((closure) => closure.id === key);
     const candidateClosures = alreadyAvoided
@@ -268,41 +582,28 @@ export function setupRouting(map, {
       }];
     clearAvoidNotice();
     avoidPending = true;
-    const requestStart = routeStartPoint;
-    const requestDestination = routeDestinationPoint;
+    const version = ++planVersion;
     renderRouteHazards();
 
     try {
-      const result = await requestWorkerRoute(
-        routeStartPoint,
-        routeDestinationPoint,
-        candidateClosures.map(({ id, point, radiusM }) => ({ id, point, radiusM })),
-      );
-      if (routeStartPoint !== requestStart || routeDestinationPoint !== requestDestination) return;
+      const result = await routeChain(currentPoints(routeStartPoint), blockedPointsFor(candidateClosures));
+      if (version !== planVersion) return;
       if (!result.route) {
         if (!alreadyAvoided) showAvoidNotice();
         return;
       }
 
-      const affected = new Set((result.blockedPointsAffected || []).map(String));
+      const affected = new Set(result.blockedPointsAffected);
       if (!alreadyAvoided && !affected.has(key)) {
         showAvoidNotice();
         return;
       }
 
       avoidClosures = candidateClosures.filter((closure) => affected.has(closure.id));
+      legs = result.legs;
       installRoute(result.route);
-      if (avoidClosures.length > 0) {
-        const additionalMiles = Math.max(0, (result.route.totalDistanceM - baseRouteDistanceM) / 1609.344);
-        const additionalText = additionalMiles > 0 && additionalMiles < 0.1
-          ? additionalMiles.toFixed(2)
-          : additionalMiles.toFixed(1);
-        routeStatus.textContent = `Avoiding ${avoidClosures.length} ${avoidClosures.length === 1 ? "closure" : "closures"} · +${additionalText} mi`;
-      } else {
-        routeStatus.textContent = formatRouteStatus(result.route);
-      }
     } catch {
-      if (!alreadyAvoided) showAvoidNotice();
+      if (!alreadyAvoided && version === planVersion) showAvoidNotice();
     } finally {
       avoidPending = false;
       renderRouteHazards();
@@ -328,17 +629,6 @@ export function setupRouting(map, {
     avoidNotice = "";
   }
 
-  function requestWorkerRoute(start, end, blockedPoints = []) {
-    if (!validPoint(start) || !validPoint(end)) {
-      return Promise.reject(new Error("Route coordinates are invalid."));
-    }
-    const id = ++requestId;
-    return new Promise((resolve, reject) => {
-      pendingRequests.set(id, { resolve, reject });
-      worker.postMessage({ type: "route", requestId: id, start, destination: end, blockedPoints });
-    });
-  }
-
   function installRoute(route) {
     activeRoute = route;
     lastRouteFeature = {
@@ -347,10 +637,11 @@ export function setupRouting(map, {
       properties: {},
     };
     map.getSource(SOURCE_ID).setData(lastRouteFeature);
-    clearRouteButton.hidden = false;
-    routeAction.hidden = true;
+    routeMenu.hidden = true;
     lastFixRecomputeAt = performance.now();
     recomputeRouteHazards();
+    renderPlan();
+    setRouteStatus(routeSummaryStatus());
     map.fitBounds(routeBounds(route.geometry), {
       padding: { top: 112, right: 52, bottom: 132, left: 52 },
       maxZoom: 12.5,
@@ -358,76 +649,236 @@ export function setupRouting(map, {
     });
   }
 
-  function clearRoute(message = "") {
+  function clearRouteLine() {
     map.getSource(SOURCE_ID).setData({ type: "FeatureCollection", features: [] });
     lastRouteFeature = null;
     activeRoute = null;
+    legs = [];
+  }
+
+  function showRouteFailure(message) {
+    clearRouteLine();
     routeStartPoint = null;
-    routeDestinationPoint = null;
+    recomputeRouteHazards();
+    renderPlan();
+    setRouteStatus(message);
+  }
+
+  function clearRoute(message = "") {
+    planVersion += 1;
+    clearRouteLine();
+    pendingPoint = null;
+    customStart = null;
+    stops = [];
+    destinationPoint = null;
+    routeStartPoint = null;
     baseRouteDistanceM = 0;
     avoidClosures = [];
     clearAvoidNotice();
-    routeStatus.textContent = message;
-    clearRouteButton.hidden = true;
+    updateMarkers();
+    routeMenu.hidden = true;
     recomputeRouteHazards();
+    renderPlan();
+    setRouteStatus(message);
   }
 
-  function calculateRoute(start, end) {
-    routeStatus.textContent = "Calculating route…";
-    return requestWorkerRoute(start, end).then((data) => {
-      if (!data.route) {
-        clearRoute(data.reason || "No route exists.");
-        return data;
+  async function updateRoute() {
+    const version = ++planVersion;
+    legs = [];
+    renderPlan();
+    if (!destinationPoint) {
+      renderRouteHazards();
+      setRouteStatus(hasPlan() ? "Choose a destination" : "");
+      return null;
+    }
+
+    setRouteStatus("Calculating route…");
+    let start;
+    try {
+      start = customStart || getLatestLocation() || await requestLocation();
+    } catch (error) {
+      if (version === planVersion) {
+        showRouteFailure(error?.code === 1
+          ? "Location permission was denied."
+          : error?.message || "Your location could not be determined.");
       }
-      clearAvoidNotice();
-      avoidClosures = [];
+      return null;
+    }
+    if (version !== planVersion) return null;
+
+    const points = currentPoints(start);
+    try {
+      const base = await routeChain(points);
+      if (version !== planVersion) return null;
+      if (!base.route) {
+        showRouteFailure(base.reason || "No route exists.");
+        return base;
+      }
+
+      let chosen = base;
+      if (avoidClosures.length > 0) {
+        const avoided = await routeChain(points, blockedPointsFor(avoidClosures));
+        if (version !== planVersion) return null;
+        if (avoided.route) {
+          const affected = new Set(avoided.blockedPointsAffected);
+          avoidClosures = avoidClosures.filter((closure) => affected.has(closure.id));
+          chosen = avoided;
+        } else {
+          avoidClosures = [];
+          showAvoidNotice();
+        }
+      }
+
       routeStartPoint = start;
-      routeDestinationPoint = end;
-      baseRouteDistanceM = data.route.totalDistanceM;
-      const currentLocation = getLatestLocation();
-      if (validPoint(currentLocation)) liveFix = currentLocation;
-      installRoute(data.route);
-      routeStatus.textContent = formatRouteStatus(data.route);
+      baseRouteDistanceM = base.route.totalDistanceM;
+      legs = chosen.legs;
+      if (!customStart) {
+        const currentLocation = getLatestLocation();
+        if (validPoint(currentLocation)) liveFix = currentLocation;
+      }
+      installRoute(chosen.route);
       dismissHint();
-      return data;
-    }).catch((error) => {
-      clearRoute(error.message || "Routing is unavailable.");
-      throw error;
-    });
+      return chosen;
+    } catch (error) {
+      if (version === planVersion) showRouteFailure(error.message || "Routing is unavailable.");
+      return null;
+    }
   }
 
-  function selectDestination(point) {
-    destination = point;
-    routeAction.hidden = false;
-    routeStatus.textContent = "Destination selected · choose Route to here";
+  function planChanged() {
+    updateMarkers();
+    return updateRoute();
+  }
+
+  function moveStop(from, to, focusHandle = false) {
+    if (from === to || to < 0 || to >= stops.length) return;
+    const [stop] = stops.splice(from, 1);
+    stops.splice(to, 0, stop);
+    planChanged();
+    if (focusHandle) {
+      planElement.querySelector(`[data-stop-id="${stop.id}"] .route-leg-handle`)?.focus();
+    }
+  }
+
+  function removeStop(index) {
+    stops.splice(index, 1);
+    planChanged();
+  }
+
+  function useMyLocation() {
+    customStart = null;
+    const currentLocation = getLatestLocation();
+    if (validPoint(currentLocation)) liveFix = currentLocation;
+    planChanged();
+  }
+
+  function startStopDrag(event, index) {
+    if (event.button !== 0 || dragState) return;
+    event.preventDefault();
+    const handle = event.currentTarget;
+    const rows = [...planElement.querySelectorAll(".route-leg-stop")];
+    dragState = {
+      pointerId: event.pointerId,
+      index,
+      targetIndex: index,
+      startY: event.clientY,
+      row: rows[index],
+      middles: rows.map((row) => {
+        const rect = row.getBoundingClientRect();
+        return rect.top + rect.height / 2;
+      }),
+    };
+    handle.setPointerCapture(event.pointerId);
+    dragState.row.classList.add("is-dragging");
+    handle.addEventListener("pointermove", moveStopDrag);
+    handle.addEventListener("pointerup", finishStopDrag);
+    handle.addEventListener("pointercancel", finishStopDrag);
+  }
+
+  function moveStopDrag(event) {
+    if (!dragState || event.pointerId !== dragState.pointerId) return;
+    const deltaY = event.clientY - dragState.startY;
+    dragState.row.style.transform = `translateY(${deltaY}px)`;
+    const center = dragState.middles[dragState.index] + deltaY;
+    dragState.targetIndex = dragState.middles
+      .filter((middle, index) => index !== dragState.index && middle < center).length;
+  }
+
+  function finishStopDrag(event) {
+    if (!dragState || event.pointerId !== dragState.pointerId) return;
+    const handle = event.currentTarget;
+    handle.removeEventListener("pointermove", moveStopDrag);
+    handle.removeEventListener("pointerup", finishStopDrag);
+    handle.removeEventListener("pointercancel", finishStopDrag);
+    const { index, row } = dragState;
+    const targetIndex = event.type === "pointercancel" ? index : dragState.targetIndex;
+    row.classList.remove("is-dragging");
+    row.style.transform = "";
+    dragState = null;
+    if (targetIndex !== index) moveStop(index, targetIndex);
+    else if (planRenderPending) renderPlan();
+  }
+
+  function selectPoint(point) {
+    pendingPoint = point;
+    routeMenu.hidden = false;
+    setRouteStatus("Point selected · choose an option");
     dismissHint();
   }
 
-  routeAction.addEventListener("click", async () => {
-    if (!destination) return;
-    routeAction.disabled = true;
-    try {
-      const start = getLatestLocation() || await requestLocation();
-      await calculateRoute(start, destination);
-    } catch (error) {
-      routeStatus.textContent = error?.code === 1
-        ? "Location permission was denied."
-        : error?.message || "Your location could not be determined.";
-    } finally {
-      routeAction.disabled = false;
-    }
+  function takePendingPoint() {
+    const point = pendingPoint;
+    pendingPoint = null;
+    routeMenu.hidden = true;
+    return point;
+  }
+
+  routeAction.addEventListener("click", () => {
+    const point = takePendingPoint();
+    if (!point) return;
+    destinationPoint = point;
+    updateRoute();
   });
 
-  clearRouteButton.addEventListener("click", () => {
-    destination = null;
-    clearRoute();
-    routeAction.hidden = true;
+  startHereButton.addEventListener("click", () => {
+    const point = takePendingPoint();
+    if (!point) return;
+    customStart = point;
+    planChanged();
   });
+
+  addStopButton.addEventListener("click", () => {
+    const point = takePendingPoint();
+    if (!point) return;
+    nextStopId += 1;
+    stops.push({ id: nextStopId, point });
+    planChanged();
+  });
+
+  clearRouteButton.addEventListener("click", () => clearRoute());
 
   hazardsToggle.addEventListener("click", () => {
     const expanded = hazardsToggle.getAttribute("aria-expanded") !== "false";
     hazardsToggle.setAttribute("aria-expanded", String(!expanded));
-    hazardsList.hidden = expanded;
+    panelBody.hidden = expanded;
+  });
+
+  settingsToggle.addEventListener("click", () => {
+    const open = settingsPanel.hidden;
+    settingsPanel.hidden = !open;
+    settingsToggle.setAttribute("aria-expanded", String(open));
+    if (open) fareRateInput.focus();
+  });
+
+  fareRateInput.addEventListener("input", () => {
+    fareRateText = fareRateInput.value.trim();
+    try {
+      if (fareRateText) localStorage.setItem(FARE_RATE_KEY, fareRateText);
+      else localStorage.removeItem(FARE_RATE_KEY);
+    } catch {
+      // The rate still applies for this page if storage is unavailable.
+    }
+    renderPlan();
   });
 
   const canvasContainer = map.getCanvasContainer();
@@ -452,7 +903,7 @@ export function setupRouting(map, {
       suppressMapClick = true;
       window.clearTimeout(suppressClickTimer);
       suppressClickTimer = window.setTimeout(() => { suppressMapClick = false; }, 1200);
-      selectDestination(holdPointer.point);
+      selectPoint(holdPointer.point);
       holdPointer = null;
       holdTimer = null;
     }, 600);
@@ -475,15 +926,21 @@ export function setupRouting(map, {
     && url.searchParams.get("test") === "1";
   if (isLocalTest) {
     globalThis.__WARN_MAP_TEST__ = Object.freeze({
-      route: (startLatLon, destinationLatLon) => calculateRoute(
-        [startLatLon[1], startLatLon[0]],
-        [destinationLatLon[1], destinationLatLon[0]],
-      ),
+      // Routes from an explicit start, which behaves as a custom start pin.
+      route: (startLatLon, destinationLatLon) => {
+        customStart = [startLatLon[1], startLatLon[0]];
+        stops = [];
+        destinationPoint = [destinationLatLon[1], destinationLatLon[0]];
+        return planChanged();
+      },
+      // Equivalent to a long press at this point; the menu buttons then act on it.
+      selectPoint: (latitudeLongitude) => selectPoint([latitudeLongitude[1], latitudeLongitude[0]]),
       routeWithBlockedPoints: (startLatLon, destinationLatLon, blockedPoints = []) => requestWorkerRoute(
         [startLatLon[1], startLatLon[0]],
         [destinationLatLon[1], destinationLatLon[0]],
         blockedPoints,
       ),
+      routeLegs: () => legs.map((leg) => ({ ...leg })),
       workerLoadTime: () => workerLoadTimeMs,
       graphTransfer: () => graphTransfer,
       routeLineRendered: () => map.queryRenderedFeatures({ layers: [LINE_LAYER_ID] }).length > 0,
