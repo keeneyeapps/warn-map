@@ -1,6 +1,6 @@
 importScripts("./js/precache-list.js");
 
-const CACHE_NAME = "warn-map-shell-v14";
+const CACHE_NAME = "warn-map-shell-v15";
 const SCOPE_URL = new URL(self.registration.scope);
 const ASSET_URLS = self.WARN_PRECACHE_URLS.map((path) => new URL(path, SCOPE_URL).href);
 const ASSET_PATHS = new Set(ASSET_URLS.map((assetUrl) => new URL(assetUrl).pathname));
@@ -8,7 +8,10 @@ const ASSET_PATHS = new Set(ASSET_URLS.map((assetUrl) => new URL(assetUrl).pathn
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(ASSET_URLS))
+      .then((cache) => cache.addAll(ASSET_URLS)
+        // Warm the road graph so routing works offline after one visit; a failure here
+        // must not block install, because the fetch handler also caches it on first use.
+        .then(() => cache.add(new URL("graph/kenai-roads.json", SCOPE_URL).href).catch(() => {})))
       .then(() => self.skipWaiting()),
   );
 });

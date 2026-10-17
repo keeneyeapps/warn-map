@@ -8,6 +8,21 @@ const LINE_LAYER_ID = "computed-route-line";
 const HINT_KEY = "warn-map-route-hint-dismissed";
 const FARE_RATE_KEY = "warn-map-fare-rate";
 const METERS_PER_MILE = 1609.344;
+const PLACE_SEARCH_RADIUS_M = 12_000;
+const DESTINATION_FLAG_SVG = '<svg viewBox="0 0 22 28" width="22" height="28" aria-hidden="true">'
+  + '<path d="M3 3v23" stroke="#171b1d" stroke-width="4" stroke-linecap="round"/>'
+  + '<path d="M3 3v23" stroke="#f4f3ed" stroke-width="2" stroke-linecap="round"/>'
+  + '<path d="M4 3h15l-4 5 4 5H4z" fill="#54dfb3" stroke="#171b1d" stroke-width="1.5" stroke-linejoin="round"/>'
+  + "</svg>";
+const ROAD_ABBREVIATIONS = [
+  [/\bHighway\b/g, "Hwy"],
+  [/\bRoad\b/g, "Rd"],
+  [/\bAvenue\b/g, "Ave"],
+  [/\bStreet\b/g, "St"],
+  [/\bDrive\b/g, "Dr"],
+  [/\bBoulevard\b/g, "Blvd"],
+  [/\bLane\b/g, "Ln"],
+];
 
 function validPoint(point) {
   return Array.isArray(point) && point.length === 2
@@ -46,6 +61,44 @@ function formatMinutes(seconds) {
 
 function formatRouteStatus(route) {
   return `Route ${formatMiles(route.totalDistanceM)} · ${formatMinutes(route.estimatedTimeSeconds)}`;
+}
+
+function approximateMeters(first, second) {
+  const latitudeScale = 111_320;
+  const longitudeScale = latitudeScale * Math.cos(first[1] * Math.PI / 180);
+  return Math.hypot((second[0] - first[0]) * longitudeScale, (second[1] - first[1]) * latitudeScale);
+}
+
+function abbreviateRoad(name) {
+  return ROAD_ABBREVIATIONS.reduce((text, [pattern, short]) => text.replace(pattern, short), name);
+}
+
+// Main roads in travel order: named stretches that carry a meaningful share of the route.
+function routeRoadNames(route, limit = 6) {
+  const runs = [];
+  for (const edge of route.edgeIndices || []) {
+    if (!edge.name) continue;
+    const distanceM = edge.end_m - edge.start_m;
+    const last = runs[runs.length - 1];
+    if (last && last.name === edge.name) last.distanceM += distanceM;
+    else runs.push({ name: edge.name, distanceM });
+  }
+  if (runs.length === 0) return [];
+  const minimumM = Math.max(800, route.totalDistanceM * 0.05);
+  let main = runs.filter((run) => run.distanceM >= minimumM);
+  if (main.length === 0) {
+    main = [runs.reduce((longest, run) => (run.distanceM > longest.distanceM ? run : longest))];
+  }
+  const names = [];
+  for (const run of main) {
+    const name = abbreviateRoad(run.name);
+    if (!names.includes(name)) names.push(name);
+  }
+  return names.slice(0, limit);
+}
+
+function lowerFirst(text) {
+  return text ? text[0].toLowerCase() + text.slice(1) : text;
 }
 
 function joinLegs(legRoutes) {
@@ -116,6 +169,8 @@ export function setupRouting(map, {
   let planVersion = 0;
   let startMarker = null;
   let stopMarkers = [];
+  let destinationMarker = null;
+  const placeIndex = new Map();
   let dragState = null;
   let planRenderPending = false;
   let fareRateText = "";
@@ -253,6 +308,20 @@ export function setupRouting(map, {
       startMarker.remove();
       startMarker = null;
     }
+    if (destinationPoint && !destinationMarker) {
+      const element = document.createElement("div");
+      element.className = "route-marker-destination";
+      element.setAttribute("role", "img");
+      element.setAttribute("aria-label", "Destination");
+      element.innerHTML = DESTINATION_FLAG_SVG;
+      destinationMarker = new maplibregl.Marker({ element, anchor: "bottom-left", offset: [-3, 1] })
+        .setLngLat(destinationPoint).addTo(map);
+    } else if (destinationPoint) {
+      destinationMarker.setLngLat(destinationPoint);
+    } else if (destinationMarker) {
+      destinationMarker.remove();
+      destinationMarker = null;
+    }
     for (const marker of stopMarkers) marker.remove();
     stopMarkers = stops.map((stop, index) => new maplibregl.Marker({
       element: markerElement("route-marker-stop", String(index + 1), `Stop ${index + 1}`),
@@ -346,6 +415,115 @@ export function setupRouting(map, {
     return row;
   }
 
+  function legsAreCurrent() {
+    return Boolean(destinationPoint && activeRoute && legs.length === stops.length + 1);
+  }
+
+  // Running totals rounded to the tenth; each leg shows the difference so legs sum to the total.
+  function cumulativeLegTenths() {
+    const cumulative = [];
+    let runningM = 0;
+    for (const leg of legs) {
+      runningM += leg.distanceM;
+      cumulative.push(milesInTenths(runningM));
+    }
+    return cumulative;
+  }
+
+  function fareText(totalTenths) {
+    const rate = fareRate();
+    if (rate === null) return "";
+    return `Fare at $${rate.toFixed(2)}/mi: $${(Math.round(totalTenths * rate * 10) / 100).toFixed(2)}`;
+  }
+
+  // Smaller towns only appear in higher-zoom tiles, so keep every locality label seen so far.
+  function indexPlaces() {
+    let features;
+    try {
+      features = map.querySourceFeatures("protomaps", {
+        sourceLayer: "places",
+        filter: ["==", ["get", "kind"], "locality"],
+      });
+    } catch {
+      return;
+    }
+    for (const feature of features) {
+      if (feature.geometry?.type !== "Point") continue;
+      const name = feature.properties?.["name:en"] || feature.properties?.name;
+      if (!name) continue;
+      const [longitude, latitude] = feature.geometry.coordinates;
+      placeIndex.set(`${name}|${longitude.toFixed(2)}|${latitude.toFixed(2)}`, { name, point: [longitude, latitude] });
+    }
+  }
+
+  function nearestPlaceName(point) {
+    indexPlaces();
+    let best = null;
+    for (const place of placeIndex.values()) {
+      const distanceM = approximateMeters(point, place.point);
+      if (distanceM <= PLACE_SEARCH_RADIUS_M && (!best || distanceM < best.distanceM)) {
+        best = { name: place.name, distanceM };
+      }
+    }
+    return best?.name ?? null;
+  }
+
+  function buildShareText() {
+    if (!legsAreCurrent() || !routeStartPoint) return "";
+    const points = currentPoints(routeStartPoint);
+    const fallbacks = ["Start", ...stops.map((stop, index) => `Stop ${index + 1}`), "Destination"];
+    const totalTenths = cumulativeLegTenths().at(-1);
+    const lines = [
+      points.map((point, index) => nearestPlaceName(point) || fallbacks[index]).join(" → "),
+      `${formatTenths(totalTenths)} · about ${formatMinutes(activeRoute.estimatedTimeSeconds)}`,
+    ];
+    const roads = routeRoadNames(activeRoute);
+    if (roads.length > 0) lines.push(roads.join(" → "));
+
+    const hazards = routeHazardRows.filter((row) => !row.offRoute);
+    if (hazards.length === 0) {
+      lines.push("No reported hazards along your route");
+    } else {
+      lines.push(`${hazards.length} reported ${hazards.length === 1 ? "hazard" : "hazards"} along your route:`);
+      const now = Date.now();
+      for (const row of hazards) {
+        const properties = row.feature.properties;
+        const title = properties.title || properties.label || properties.hazard_type || "Hazard";
+        const age = Number.isFinite(Date.parse(properties.created_at))
+          ? ` (reported ${lowerFirst(formatHazardAge(properties.created_at, now))})`
+          : "";
+        lines.push(`  ${lowerFirst(title)}, ${formatMiles(row.distanceAheadM)} ahead${age}`);
+      }
+    }
+
+    const fare = fareText(totalTenths);
+    if (fare) lines.push(fare);
+    return lines.join("\n");
+  }
+
+  async function shareRoute(button) {
+    const text = buildShareText();
+    if (!text) return;
+    if (typeof navigator.share === "function") {
+      try {
+        await navigator.share({ text });
+        return;
+      } catch (error) {
+        if (error?.name === "AbortError") return;
+      }
+    }
+    let label = "Copied";
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      label = "Copy failed";
+    }
+    button.textContent = label;
+    window.setTimeout(() => {
+      if (button.isConnected) button.textContent = "Share";
+    }, 2000);
+  }
+
   function renderPlan() {
     if (dragState) {
       planRenderPending = true;
@@ -356,15 +534,8 @@ export function setupRouting(map, {
     planElement.replaceChildren();
     if (!hasPlan()) return;
 
-    const legsCurrent = Boolean(destinationPoint && activeRoute && legs.length === stops.length + 1);
-    const cumulative = [];
-    let runningM = 0;
-    if (legsCurrent) {
-      for (const leg of legs) {
-        runningM += leg.distanceM;
-        cumulative.push(milesInTenths(runningM));
-      }
-    }
+    const legsCurrent = legsAreCurrent();
+    const cumulative = legsCurrent ? cumulativeLegTenths() : [];
 
     const list = document.createElement("ol");
     list.className = "route-legs";
@@ -404,12 +575,12 @@ export function setupRouting(map, {
       totalText.className = "route-total-distance";
       totalText.textContent = `Total ${formatTenths(totalTenths)} · ${formatMinutes(activeRoute.estimatedTimeSeconds)}`;
       total.append(totalText);
-      const rate = fareRate();
-      if (rate !== null) {
-        const fare = document.createElement("span");
-        fare.className = "route-fare";
-        fare.textContent = `Fare at $${rate.toFixed(2)}/mi: $${(Math.round(totalTenths * rate * 10) / 100).toFixed(2)}`;
-        total.append(fare);
+      const fare = fareText(totalTenths);
+      if (fare) {
+        const fareElement = document.createElement("span");
+        fareElement.className = "route-fare";
+        fareElement.textContent = fare;
+        total.append(fareElement);
       }
       planElement.append(total);
     } else if (!destinationPoint) {
@@ -419,14 +590,25 @@ export function setupRouting(map, {
       planElement.append(hint);
     }
 
+    const actions = document.createElement("div");
+    actions.className = "route-plan-actions";
+    if (legsCurrent) {
+      const share = document.createElement("button");
+      share.className = "route-plan-button route-share-button";
+      share.type = "button";
+      share.textContent = "Share";
+      share.addEventListener("click", () => shareRoute(share));
+      actions.append(share);
+    }
     if (customStart) {
       const useLocation = document.createElement("button");
       useLocation.className = "route-plan-button";
       useLocation.type = "button";
       useLocation.textContent = "Use my location";
       useLocation.addEventListener("click", useMyLocation);
-      planElement.append(useLocation);
+      actions.append(useLocation);
     }
+    if (actions.childElementCount > 0) planElement.append(actions);
   }
 
   function renderRouteHazards() {
@@ -837,7 +1019,7 @@ export function setupRouting(map, {
     const point = takePendingPoint();
     if (!point) return;
     destinationPoint = point;
-    updateRoute();
+    planChanged();
   });
 
   startHereButton.addEventListener("click", () => {
@@ -880,6 +1062,8 @@ export function setupRouting(map, {
     }
     renderPlan();
   });
+
+  map.on("idle", indexPlaces);
 
   const canvasContainer = map.getCanvasContainer();
   function cancelHold() {
@@ -941,6 +1125,8 @@ export function setupRouting(map, {
         blockedPoints,
       ),
       routeLegs: () => legs.map((leg) => ({ ...leg })),
+      shareText: () => buildShareText(),
+      routeRoads: () => (activeRoute ? routeRoadNames(activeRoute, Infinity) : []),
       workerLoadTime: () => workerLoadTimeMs,
       graphTransfer: () => graphTransfer,
       routeLineRendered: () => map.queryRenderedFeatures({ layers: [LINE_LAYER_ID] }).length > 0,

@@ -600,6 +600,7 @@ function computeRoute(startPoint, endPoint, state, blockedPoints = []) {
     if (distanceM > 0.001) {
       edgeIndices.push({
         index: chunk.edgeIndex,
+        name: state.edgeName[chunk.edgeIndex] || null,
         start_m: startM,
         end_m: totalDistanceM,
         geometry_start_index: geometryStartIndex,
