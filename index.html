@@ -19,9 +19,13 @@
     <main id="map" aria-label="Map of the Kenai Peninsula"></main>
     <div id="hazard-status" class="hazard-status" role="status" aria-live="polite">
       <span id="hazard-summary">Loading hazards</span>
+      <span id="route-status"></span>
+      <span id="route-hint" hidden>Tap and hold the map to route here.</span>
       <span id="wake-status">screen may sleep</span>
     </div>
     <div class="map-controls">
+      <button id="route-to-here" type="button" hidden>Route to here</button>
+      <button id="clear-route" type="button" hidden>Clear route</button>
       <button id="locate" type="button" aria-label="Locate me">Locate me</button>
       <p id="location-status" role="status" aria-live="polite"></p>
     </div>

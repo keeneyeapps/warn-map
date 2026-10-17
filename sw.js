@@ -1,6 +1,6 @@
 importScripts("./js/precache-list.js");
 
-const CACHE_NAME = "warn-map-shell-v3";
+const CACHE_NAME = "warn-map-shell-v5";
 const SCOPE_URL = new URL(self.registration.scope);
 const ASSET_URLS = self.WARN_PRECACHE_URLS.map((path) => new URL(path, SCOPE_URL).href);
 const ASSET_PATHS = new Set(ASSET_URLS.map((assetUrl) => new URL(assetUrl).pathname));
@@ -35,6 +35,21 @@ self.addEventListener("fetch", (event) => {
 
   if (requestUrl.pathname.endsWith("/tiles/kenai.pmtiles")) {
     event.respondWith(fetch(request));
+    return;
+  }
+
+  if (requestUrl.origin === SCOPE_URL.origin
+      && requestUrl.pathname.endsWith("/graph/kenai-roads.json")) {
+    event.respondWith(
+      caches.open(CACHE_NAME)
+        .then((cache) => cache.match(requestUrl.href))
+        .then((cached) => cached || fetch(request).then((response) => {
+          if (!response.ok) return response;
+          return caches.open(CACHE_NAME)
+            .then((cache) => cache.put(requestUrl.href, response.clone()))
+            .then(() => response);
+        })),
+    );
     return;
   }
 

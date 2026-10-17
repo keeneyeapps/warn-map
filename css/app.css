@@ -33,7 +33,9 @@ body {
   gap: 8px;
 }
 
-#locate {
+#locate,
+#route-to-here,
+#clear-route {
   min-height: 44px;
   padding: 0 16px;
   border: 1px solid rgb(255 255 255 / 22%);
@@ -47,11 +49,19 @@ body {
   box-shadow: 0 2px 12px rgb(0 0 0 / 28%);
 }
 
-#locate:hover {
+#locate:hover,
+#route-to-here:hover,
+#clear-route:hover {
   background: #fff;
 }
 
-#locate:focus-visible {
+#clear-route:hover {
+  background: #3a4546;
+}
+
+#locate:focus-visible,
+#route-to-here:focus-visible,
+#clear-route:focus-visible {
   outline: 3px solid #53c7a2;
   outline-offset: 3px;
 }
@@ -131,4 +141,30 @@ body {
 
 .maplibregl-ctrl-attrib {
   font-size: 10px;
+}
+
+#route-to-here {
+  border-color: #54dfb3;
+  background: #54dfb3;
+  color: #10211d;
+}
+
+#clear-route {
+  background: #252d2e;
+  color: #f4f3ed;
+}
+
+#route-to-here:disabled,
+#locate:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+#route-status {
+  color: #76e8c1;
+  font-weight: 600;
+}
+
+#route-hint {
+  color: #d6dfdc;
 }

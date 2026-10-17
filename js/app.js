@@ -1,12 +1,36 @@
 import * as maplibregl from "../vendor/maplibre-gl.js";
 import { startHazardLayer } from "./hazards.js";
 import { createMap } from "./map.js";
+import { setupRouting } from "./routing.js";
 
 const map = createMap("map");
 const status = document.querySelector("#location-status");
 const locateButton = document.querySelector("#locate");
 const wakeStatus = document.querySelector("#wake-status");
 let activeWakeLock = null;
+let latestLocation = null;
+
+function requestCurrentPosition() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("Location is not available in this browser."));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        latestLocation = [coords.longitude, coords.latitude];
+        map.getSource("device-location")?.setData({
+          type: "Feature",
+          geometry: { type: "Point", coordinates: latestLocation },
+          properties: {},
+        });
+        resolve(latestLocation);
+      },
+      reject,
+      { enableHighAccuracy: false, maximumAge: 0, timeout: 10000 },
+    );
+  });
+}
 
 function setWakeStatus(message) {
   wakeStatus.textContent = message;
@@ -64,6 +88,10 @@ map.addControl(new maplibregl.NavigationControl(), "top-right");
 
 map.once("style.load", () => {
   startHazardLayer(map);
+  setupRouting(map, {
+    getLatestLocation: () => latestLocation,
+    requestLocation: requestCurrentPosition,
+  });
 
   map.addSource("device-location", {
     type: "geojson",
@@ -95,32 +123,17 @@ map.once("style.load", () => {
 });
 
 locateButton.addEventListener("click", () => {
-  if (!navigator.geolocation) {
-    status.textContent = "Location is not available in this browser.";
-    return;
-  }
-
   locateButton.disabled = true;
   status.textContent = "Finding your location...";
-
-  navigator.geolocation.getCurrentPosition(
-    ({ coords }) => {
-      const point = [coords.longitude, coords.latitude];
+  requestCurrentPosition()
+    .then((point) => {
       map.flyTo({ center: point, zoom: 13 });
-      map.getSource("device-location")?.setData({
-        type: "Feature",
-        geometry: { type: "Point", coordinates: point },
-        properties: {},
-      });
       status.textContent = "Showing your location on this device.";
-      locateButton.disabled = false;
-    },
-    (error) => {
-      status.textContent = error.code === error.PERMISSION_DENIED
+    })
+    .catch((error) => {
+      status.textContent = error.code === 1
         ? "Location permission was denied."
-        : "Your location could not be determined.";
-      locateButton.disabled = false;
-    },
-    { enableHighAccuracy: false, maximumAge: 0, timeout: 10000 },
-  );
+        : error.message || "Your location could not be determined.";
+    })
+    .finally(() => { locateButton.disabled = false; });
 });
