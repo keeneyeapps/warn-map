@@ -17,4 +17,5 @@
 - `js/map.js`: MapLibre, PMTiles, local theme assets, and map setup.
 - `vendor/`: locally served libraries, glyphs, and sprites.
 - `tiles/kenai.pmtiles`: extracted Kenai Peninsula basemap.
+- `graph/kenai-roads.json`: offline road graph; rebuild with `tools/build_graph.py` from the ignored Geofabrik extract.
 - `docs/screenshots/`: local verification screenshots.
