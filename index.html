@@ -17,11 +17,20 @@
   </head>
   <body>
     <main id="map" aria-label="Map of the Kenai Peninsula"></main>
-    <div id="hazard-status" class="hazard-status" role="status" aria-live="polite">
-      <span id="hazard-summary">Loading hazards</span>
-      <span id="route-status"></span>
-      <span id="route-hint" hidden>Tap and hold the map to route here.</span>
-      <span id="wake-status">screen may sleep</span>
+    <div class="status-stack">
+      <div id="hazard-status" class="hazard-status" role="status" aria-live="polite">
+        <span id="hazard-summary">Loading hazards</span>
+        <span id="route-status"></span>
+        <span id="route-hint" hidden>Tap and hold the map to route here.</span>
+        <span id="wake-status">screen may sleep</span>
+      </div>
+      <section id="route-hazards-panel" class="route-hazards-panel" aria-label="Hazards on your route" hidden>
+        <button id="route-hazards-toggle" class="route-hazards-toggle" type="button" aria-expanded="true" aria-controls="route-hazards-list">
+          <span id="route-hazards-title"></span>
+          <span class="route-hazards-chevron" aria-hidden="true"></span>
+        </button>
+        <div id="route-hazards-list" class="route-hazards-list" role="list"></div>
+      </section>
     </div>
     <div class="map-controls">
       <button id="route-to-here" type="button" hidden>Route to here</button>

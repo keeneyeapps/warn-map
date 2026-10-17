@@ -118,6 +118,7 @@ function featureForRow(row) {
       title,
       category,
       category_label: categoryLabels[category],
+      category_color: categoryColors[category],
       hazard_type: hazardType,
       created_at: displayValue(row.created_at),
       confirmation_count: Number(row.confirmation_count) || 0,
@@ -126,7 +127,7 @@ function featureForRow(row) {
   };
 }
 
-function formatAge(timestamp, now) {
+export function formatHazardAge(timestamp, now) {
   const createdAt = Date.parse(timestamp);
   if (!Number.isFinite(createdAt)) return "Reported time unavailable";
 
@@ -163,7 +164,7 @@ function escapeHtml(value) {
 
 function popupContent(properties, now) {
   const lines = [
-    `<p>${escapeHtml(formatAge(properties.created_at, now))}</p>`,
+    `<p>${escapeHtml(formatHazardAge(properties.created_at, now))}</p>`,
   ];
   if (properties.confirmation_count > 0) {
     lines.push(`<p>${properties.confirmation_count} confirmations</p>`);
@@ -176,7 +177,14 @@ function popupContent(properties, now) {
   return `<article class="hazard-popup"><h2>${escapeHtml(properties.title)}</h2><p class="hazard-popup-category">${escapeHtml(properties.category_label)}</p>${lines.join("")}</article>`;
 }
 
-export function startHazardLayer(map) {
+export function openHazardPopup(map, properties, coordinate) {
+  return new maplibregl.Popup({ closeButton: true, maxWidth: "300px" })
+    .setLngLat(coordinate)
+    .setHTML(popupContent(properties, Date.now()))
+    .addTo(map);
+}
+
+export function startHazardLayer(map, { onHazardsUpdate = () => {} } = {}) {
   const status = document.querySelector("#hazard-summary");
   const statusStrip = document.querySelector("#hazard-status");
   map.addSource(SOURCE_ID, {
@@ -256,6 +264,7 @@ export function startHazardLayer(map) {
     if (force || features.length !== renderedCount) {
       map.getSource(SOURCE_ID).setData({ type: "FeatureCollection", features });
       renderedCount = features.length;
+      onHazardsUpdate(features);
     }
     updateStatus(now);
   }
@@ -264,10 +273,7 @@ export function startHazardLayer(map) {
     const feature = event.features?.[0];
     if (!feature) return;
 
-    new maplibregl.Popup({ closeButton: true, maxWidth: "300px" })
-      .setLngLat(event.lngLat)
-      .setHTML(popupContent(feature.properties, Date.now()))
-      .addTo(map);
+    openHazardPopup(map, feature.properties, event.lngLat);
   });
   map.on("mouseenter", CIRCLE_LAYER_ID, () => { map.getCanvas().style.cursor = "pointer"; });
   map.on("mouseleave", CIRCLE_LAYER_ID, () => { map.getCanvas().style.cursor = ""; });
@@ -301,4 +307,5 @@ export function startHazardLayer(map) {
   refresh();
   window.setInterval(refresh, REFRESH_INTERVAL_MS);
   window.setInterval(() => updateLayer(Date.now()), 1000);
+  return { refresh };
 }

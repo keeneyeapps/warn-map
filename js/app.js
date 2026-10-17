@@ -9,6 +9,7 @@ const locateButton = document.querySelector("#locate");
 const wakeStatus = document.querySelector("#wake-status");
 let activeWakeLock = null;
 let latestLocation = null;
+let routingController = null;
 
 function requestCurrentPosition() {
   return new Promise((resolve, reject) => {
@@ -19,6 +20,7 @@ function requestCurrentPosition() {
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
         latestLocation = [coords.longitude, coords.latitude];
+        routingController?.onLocationFix(latestLocation);
         map.getSource("device-location")?.setData({
           type: "Feature",
           geometry: { type: "Point", coordinates: latestLocation },
@@ -87,10 +89,14 @@ if ("serviceWorker" in navigator) {
 map.addControl(new maplibregl.NavigationControl(), "top-right");
 
 map.once("style.load", () => {
-  startHazardLayer(map);
-  setupRouting(map, {
+  let hazardLayer;
+  hazardLayer = startHazardLayer(map, {
+    onHazardsUpdate: (features) => routingController?.setHazards(features),
+  });
+  routingController = setupRouting(map, {
     getLatestLocation: () => latestLocation,
     requestLocation: requestCurrentPosition,
+    refreshHazards: () => hazardLayer.refresh(),
   });
 
   map.addSource("device-location", {

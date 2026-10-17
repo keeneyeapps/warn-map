@@ -544,18 +544,25 @@ function computeRoute(startPoint, endPoint, state) {
     const startM = totalDistanceM;
     totalDistanceM += distanceM;
     estimatedTimeSeconds += distanceM / state.edgeSpeed[chunk.edgeIndex];
+    const segmentGeometry = geometryBetween(chunk.edgeIndex, chunk.fromM, chunk.toM, state);
+    const startsAtExistingPoint = routeGeometry.length > 0
+      && routeGeometry[routeGeometry.length - 1][0] === segmentGeometry[0][0]
+      && routeGeometry[routeGeometry.length - 1][1] === segmentGeometry[0][1];
+    const geometryStartIndex = Math.max(0, routeGeometry.length - (startsAtExistingPoint ? 1 : 0));
+    for (const coordinate of segmentGeometry) {
+      const previous = routeGeometry[routeGeometry.length - 1];
+      if (!previous || previous[0] !== coordinate[0] || previous[1] !== coordinate[1]) {
+        routeGeometry.push(coordinate);
+      }
+    }
     if (distanceM > 0.001) {
       edgeIndices.push({
         index: chunk.edgeIndex,
         start_m: startM,
         end_m: totalDistanceM,
+        geometry_start_index: geometryStartIndex,
+        geometry_end_index: routeGeometry.length - 1,
       });
-    }
-    for (const coordinate of geometryBetween(chunk.edgeIndex, chunk.fromM, chunk.toM, state)) {
-      const previous = routeGeometry[routeGeometry.length - 1];
-      if (!previous || previous[0] !== coordinate[0] || previous[1] !== coordinate[1]) {
-        routeGeometry.push(coordinate);
-      }
     }
   }
 

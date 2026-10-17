@@ -1,3 +1,6 @@
+import { formatHazardAge, openHazardPopup } from "./hazards.js";
+import { hazardsAlongRoute } from "./route-hazards.js";
+
 const SOURCE_ID = "computed-route";
 const CASING_LAYER_ID = "computed-route-casing";
 const LINE_LAYER_ID = "computed-route-line";
@@ -28,17 +31,31 @@ function formatRouteStatus(route) {
   return `Route ${miles.toFixed(1)} mi · ${minutes} min`;
 }
 
-export function setupRouting(map, { getLatestLocation, requestLocation }) {
+export function setupRouting(map, {
+  getLatestLocation,
+  requestLocation,
+  refreshHazards = () => Promise.resolve(),
+}) {
   const routeStatus = document.querySelector("#route-status");
   const routeHint = document.querySelector("#route-hint");
   const routeAction = document.querySelector("#route-to-here");
   const clearRouteButton = document.querySelector("#clear-route");
+  const hazardsPanel = document.querySelector("#route-hazards-panel");
+  const hazardsToggle = document.querySelector("#route-hazards-toggle");
+  const hazardsTitle = document.querySelector("#route-hazards-title");
+  const hazardsList = document.querySelector("#route-hazards-list");
   const worker = new Worker(new URL("./routing-worker.js", import.meta.url), { type: "module" });
   const pendingRequests = new Map();
   let requestId = 0;
   let workerLoadTimeMs = null;
   let graphTransfer = null;
   let destination = null;
+  let activeRoute = null;
+  let hazardFeatures = [];
+  let routeHazardRows = [];
+  let liveFix = null;
+  let lastFixRecomputeAt = -Infinity;
+  let fixRecomputeTimer = null;
   let lastRouteFeature = null;
   let holdTimer = null;
   let holdPointer = null;
@@ -110,11 +127,93 @@ export function setupRouting(map, { getLatestLocation, requestLocation }) {
     routeHint.hidden = false;
   }
 
+  function renderRouteHazards() {
+    if (!activeRoute) {
+      hazardsPanel.hidden = true;
+      hazardsList.replaceChildren();
+      routeHazardRows = [];
+      return;
+    }
+
+    hazardsPanel.hidden = false;
+    hazardsTitle.textContent = `${routeHazardRows.length} ${routeHazardRows.length === 1 ? "hazard" : "hazards"} on your route`;
+    hazardsList.replaceChildren();
+    if (routeHazardRows.length === 0) {
+      const emptyMessage = document.createElement("p");
+      emptyMessage.className = "route-hazards-empty";
+      emptyMessage.textContent = "No hazards on your route";
+      hazardsList.append(emptyMessage);
+      return;
+    }
+
+    const now = Date.now();
+    for (const row of routeHazardRows) {
+      const properties = row.feature.properties;
+      const button = document.createElement("button");
+      button.className = "route-hazard-row";
+      button.type = "button";
+      button.setAttribute("role", "listitem");
+
+      const dot = document.createElement("span");
+      dot.className = "route-hazard-dot";
+      dot.style.backgroundColor = properties.category_color || "#1976d2";
+      dot.setAttribute("aria-hidden", "true");
+
+      const title = document.createElement("span");
+      title.className = "route-hazard-title";
+      title.textContent = properties.title || properties.label || properties.specific
+        || properties.hazard_type || "Hazard";
+
+      const distance = document.createElement("span");
+      distance.className = "route-hazard-distance";
+      distance.textContent = `${(row.distanceAheadM / 1609.344).toFixed(1)} mi`;
+
+      const age = document.createElement("span");
+      age.className = "route-hazard-age";
+      age.textContent = formatHazardAge(properties.created_at, now);
+
+      button.append(dot, title, distance, age);
+      button.addEventListener("click", () => {
+        const coordinate = row.feature.geometry.coordinates;
+        map.flyTo({ center: coordinate, zoom: Math.max(map.getZoom(), 14) });
+        openHazardPopup(map, properties, coordinate);
+      });
+      hazardsList.append(button);
+    }
+  }
+
+  function recomputeRouteHazards() {
+    routeHazardRows = activeRoute
+      ? hazardsAlongRoute(hazardFeatures, activeRoute, liveFix)
+      : [];
+    renderRouteHazards();
+  }
+
+  function setHazards(features) {
+    hazardFeatures = features;
+    recomputeRouteHazards();
+  }
+
+  function onLocationFix(point) {
+    liveFix = validPoint(point) ? point : null;
+    if (!activeRoute) return;
+    if (fixRecomputeTimer !== null) clearTimeout(fixRecomputeTimer);
+    const elapsed = performance.now() - lastFixRecomputeAt;
+    const delay = Math.max(0, 5000 - elapsed);
+    fixRecomputeTimer = window.setTimeout(() => {
+      fixRecomputeTimer = null;
+      lastFixRecomputeAt = performance.now();
+      recomputeRouteHazards();
+    }, delay);
+  }
+
   function clearRoute(message = "") {
     map.getSource(SOURCE_ID).setData({ type: "FeatureCollection", features: [] });
     lastRouteFeature = null;
+    activeRoute = null;
     routeStatus.textContent = message;
     clearRouteButton.hidden = true;
+    recomputeRouteHazards();
   }
 
   function calculateRoute(start, end) {
@@ -136,10 +235,15 @@ export function setupRouting(map, { getLatestLocation, requestLocation }) {
         geometry: { type: "LineString", coordinates: data.route.geometry },
         properties: {},
       };
+      activeRoute = data.route;
+      const currentLocation = getLatestLocation();
+      if (validPoint(currentLocation)) liveFix = currentLocation;
       map.getSource(SOURCE_ID).setData(lastRouteFeature);
       clearRouteButton.hidden = false;
       routeAction.hidden = true;
       routeStatus.textContent = formatRouteStatus(data.route);
+      lastFixRecomputeAt = performance.now();
+      recomputeRouteHazards();
       dismissHint();
       map.fitBounds(routeBounds(data.route.geometry), {
         padding: { top: 112, right: 52, bottom: 132, left: 52 },
@@ -179,6 +283,12 @@ export function setupRouting(map, { getLatestLocation, requestLocation }) {
     destination = null;
     clearRoute();
     routeAction.hidden = true;
+  });
+
+  hazardsToggle.addEventListener("click", () => {
+    const expanded = hazardsToggle.getAttribute("aria-expanded") !== "false";
+    hazardsToggle.setAttribute("aria-expanded", String(!expanded));
+    hazardsList.hidden = expanded;
   });
 
   const canvasContainer = map.getCanvasContainer();
@@ -234,6 +344,22 @@ export function setupRouting(map, { getLatestLocation, requestLocation }) {
       graphTransfer: () => graphTransfer,
       routeLineRendered: () => map.queryRenderedFeatures({ layers: [LINE_LAYER_ID] }).length > 0,
       routeFeature: () => lastRouteFeature,
+      routeHazards: () => routeHazardRows.map((row) => ({
+        id: row.feature.id,
+        title: row.feature.properties.title,
+        distanceFromLineM: row.distanceFromLineM,
+        distanceAheadM: row.distanceAheadM,
+        distanceAlongRouteM: row.distanceAlongRouteM,
+        edgeIndex: row.edgeIndex,
+      })),
+      setLiveFix: (latitudeLongitude) => onLocationFix(
+        validPoint(latitudeLongitude)
+          ? [latitudeLongitude[1], latitudeLongitude[0]]
+          : null,
+      ),
+      refreshHazards,
     });
   }
+
+  return { setHazards, onLocationFix };
 }

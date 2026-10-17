@@ -33,6 +33,18 @@ body {
   gap: 8px;
 }
 
+.status-stack {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  left: max(12px, env(safe-area-inset-left));
+  z-index: 3;
+  display: grid;
+  gap: 6px;
+  width: max-content;
+  max-width: min(380px, calc(100vw - 24px));
+  pointer-events: none;
+}
+
 #locate,
 #route-to-here,
 #clear-route {
@@ -81,11 +93,8 @@ body {
 }
 
 .hazard-status {
-  position: fixed;
-  top: max(12px, env(safe-area-inset-top));
-  left: max(12px, env(safe-area-inset-left));
-  z-index: 3;
-  max-width: min(360px, calc(100vw - 32px));
+  position: relative;
+  max-width: 100%;
   padding: 8px 10px;
   display: flex;
   flex-wrap: wrap;
@@ -97,6 +106,138 @@ body {
   font-size: 12px;
   line-height: 1.4;
   pointer-events: none;
+}
+
+.route-hazards-panel {
+  display: grid;
+  overflow: hidden;
+  max-height: min(44vh, 360px);
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 4px;
+  background: rgb(23 27 29 / 96%);
+  color: #f4f3ed;
+  box-shadow: 0 3px 14px rgb(0 0 0 / 32%);
+  pointer-events: auto;
+}
+
+.route-hazards-panel[hidden],
+.route-hazards-list[hidden] {
+  display: none;
+}
+
+.route-hazards-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-bottom: 1px solid rgb(255 255 255 / 10%);
+  background: #252d2e;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.route-hazards-toggle:hover {
+  background: #303a3b;
+}
+
+.route-hazards-toggle:focus-visible,
+.route-hazard-row:focus-visible {
+  outline: 2px solid #54dfb3;
+  outline-offset: -2px;
+}
+
+.route-hazards-chevron {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg) translateY(-2px);
+}
+
+.route-hazards-toggle[aria-expanded="false"] .route-hazards-chevron {
+  transform: rotate(-45deg);
+}
+
+.route-hazards-list {
+  display: grid;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  max-height: calc(min(44vh, 360px) - 40px);
+}
+
+.route-hazard-row {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) max-content;
+  align-items: center;
+  column-gap: 8px;
+  min-height: 48px;
+  padding: 6px 10px;
+  border: 0;
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.route-hazard-row:last-child {
+  border-bottom: 0;
+}
+
+.route-hazard-row:hover {
+  background: rgb(255 255 255 / 8%);
+}
+
+.route-hazard-dot {
+  grid-row: 1 / span 2;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgb(255 255 255 / 12%);
+}
+
+.route-hazard-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-hazard-distance {
+  grid-column: 3;
+  grid-row: 1;
+  color: #76e8c1;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.route-hazard-age {
+  grid-column: 2 / span 2;
+  grid-row: 2;
+  color: #b9c4c3;
+  font-size: 10px;
+}
+
+.route-hazards-empty {
+  margin: 0;
+  padding: 10px 12px;
+  color: #c4cecc;
+  font-size: 12px;
+}
+
+[hidden] {
+  display: none !important;
 }
 
 .hazard-status.is-stale {
@@ -134,7 +275,7 @@ body {
     bottom: max(72px, env(safe-area-inset-bottom));
   }
 
-  .hazard-status {
+  .status-stack {
     top: max(78px, env(safe-area-inset-top));
   }
 }
