@@ -77,6 +77,10 @@ body {
   z-index: 3;
   max-width: min(360px, calc(100vw - 32px));
   padding: 8px 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
   border-left: 3px solid #53c7a2;
   background: rgb(23 27 29 / 94%);
   color: #f4f3ed;
@@ -88,6 +92,12 @@ body {
 .hazard-status.is-stale {
   border-left-color: #ffbd4a;
   color: #ffcf78;
+}
+
+#wake-status {
+  color: #bdc8c8;
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .hazard-popup h2 {

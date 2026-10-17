@@ -4,7 +4,12 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#171b1d">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="WARN Map">
     <title>WARN Map | Kenai Peninsula</title>
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
     <link rel="stylesheet" href="./vendor/maplibre-gl.css">
     <link rel="stylesheet" href="./css/app.css">
     <script src="./vendor/pmtiles.js"></script>
@@ -12,7 +17,10 @@
   </head>
   <body>
     <main id="map" aria-label="Map of the Kenai Peninsula"></main>
-    <div id="hazard-status" class="hazard-status" role="status" aria-live="polite">Loading hazards</div>
+    <div id="hazard-status" class="hazard-status" role="status" aria-live="polite">
+      <span id="hazard-summary">Loading hazards</span>
+      <span id="wake-status">screen may sleep</span>
+    </div>
     <div class="map-controls">
       <button id="locate" type="button" aria-label="Locate me">Locate me</button>
       <p id="location-status" role="status" aria-live="polite"></p>

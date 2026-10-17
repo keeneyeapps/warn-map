@@ -177,7 +177,8 @@ function popupContent(properties, now) {
 }
 
 export function startHazardLayer(map) {
-  const status = document.querySelector("#hazard-status");
+  const status = document.querySelector("#hazard-summary");
+  const statusStrip = document.querySelector("#hazard-status");
   map.addSource(SOURCE_ID, {
     type: "geojson",
     data: EMPTY_COLLECTION,
@@ -185,6 +186,7 @@ export function startHazardLayer(map) {
   let lastGoodRows = [];
   let lastSuccessfulAt = null;
   let renderedCount = 0;
+  let refreshFailed = false;
 
   map.addLayer({
     id: CIRCLE_LAYER_ID,
@@ -239,14 +241,14 @@ export function startHazardLayer(map) {
 
   function updateStatus(now) {
     if (lastSuccessfulAt === null) {
-      status.textContent = "Loading hazards";
-      status.classList.remove("is-stale");
+      status.textContent = refreshFailed ? "Hazards unavailable · stale" : "Loading hazards";
+      statusStrip.classList.toggle("is-stale", refreshFailed);
       return;
     }
 
     const age = now - lastSuccessfulAt;
     status.textContent = `${renderedCount} ${renderedCount === 1 ? "hazard" : "hazards"} · updated ${formatElapsed(age)}`;
-    status.classList.toggle("is-stale", age > STALE_AFTER_MS);
+    statusStrip.classList.toggle("is-stale", age > STALE_AFTER_MS);
   }
 
   function updateLayer(now, force = false) {
@@ -287,9 +289,10 @@ export function startHazardLayer(map) {
 
       lastGoodRows = rows;
       lastSuccessfulAt = Date.now();
+      refreshFailed = false;
       updateLayer(lastSuccessfulAt, true);
-    } catch (error) {
-      console.error("Unable to refresh public hazards; keeping the last good result.", error);
+    } catch {
+      refreshFailed = true;
       updateStatus(Date.now());
     }
   }

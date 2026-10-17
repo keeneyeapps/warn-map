@@ -5,6 +5,60 @@ import { createMap } from "./map.js";
 const map = createMap("map");
 const status = document.querySelector("#location-status");
 const locateButton = document.querySelector("#locate");
+const wakeStatus = document.querySelector("#wake-status");
+let activeWakeLock = null;
+
+function setWakeStatus(message) {
+  wakeStatus.textContent = message;
+}
+
+async function requestWakeLock() {
+  if (!navigator.wakeLock?.request) {
+    setWakeStatus("not supported");
+    return;
+  }
+  if (document.visibilityState !== "visible") return;
+
+  try {
+    const wakeLock = await navigator.wakeLock.request("screen");
+    if (document.visibilityState !== "visible") {
+      await wakeLock.release().catch(() => {});
+      setWakeStatus("screen may sleep");
+      return;
+    }
+    activeWakeLock = wakeLock;
+    setWakeStatus("screen stays on");
+    wakeLock.addEventListener("release", () => {
+      if (activeWakeLock === wakeLock) {
+        activeWakeLock = null;
+        setWakeStatus("screen may sleep");
+      }
+    }, { once: true });
+  } catch {
+    activeWakeLock = null;
+    setWakeStatus("screen may sleep");
+  }
+}
+
+function releaseWakeLock() {
+  const wakeLock = activeWakeLock;
+  activeWakeLock = null;
+  setWakeStatus("screen may sleep");
+  if (wakeLock) wakeLock.release().catch(() => {});
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") requestWakeLock();
+  else releaseWakeLock();
+});
+
+requestWakeLock();
+
+if ("serviceWorker" in navigator) {
+  const serviceWorkerUrl = new URL("../sw.js", import.meta.url);
+  const serviceWorkerScope = new URL("../", import.meta.url).pathname;
+  navigator.serviceWorker.register(serviceWorkerUrl, { scope: serviceWorkerScope }).catch(() => {});
+}
 
 map.addControl(new maplibregl.NavigationControl(), "top-right");
 
