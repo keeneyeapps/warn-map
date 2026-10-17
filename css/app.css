@@ -1,0 +1,75 @@
+:root {
+  color-scheme: dark;
+  font-family: "Noto Sans", "Segoe UI", sans-serif;
+  background: #171b1d;
+  color: #f4f3ed;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#map {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+.map-controls {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(24px, env(safe-area-inset-bottom));
+  z-index: 2;
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
+#locate {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid rgb(255 255 255 / 22%);
+  border-radius: 4px;
+  background: #f4f3ed;
+  color: #171b1d;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 12px rgb(0 0 0 / 28%);
+}
+
+#locate:hover {
+  background: #fff;
+}
+
+#locate:focus-visible {
+  outline: 3px solid #53c7a2;
+  outline-offset: 3px;
+}
+
+#location-status {
+  max-width: min(280px, calc(100vw - 32px));
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 3px;
+  background: rgb(23 27 29 / 90%);
+  color: #f4f3ed;
+  font-size: 12px;
+}
+
+#location-status:empty {
+  display: none;
+}
+
+.maplibregl-ctrl-attrib {
+  font-size: 10px;
+}
