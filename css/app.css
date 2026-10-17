@@ -181,7 +181,7 @@ body {
   min-height: 48px;
   padding: 6px 10px;
   border: 0;
-  border-bottom: 1px solid rgb(255 255 255 / 8%);
+  border-bottom: 0;
   background: transparent;
   color: inherit;
   text-align: left;
@@ -193,8 +193,45 @@ body {
   border-bottom: 0;
 }
 
+.route-hazard-entry {
+  display: grid;
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+}
+
+.route-hazard-entry:last-child {
+  border-bottom: 0;
+}
+
 .route-hazard-row:hover {
   background: rgb(255 255 255 / 8%);
+}
+
+.route-avoid-button {
+  justify-self: end;
+  margin: 0 10px 7px 28px;
+  padding: 4px 8px;
+  border: 1px solid rgb(84 223 179 / 50%);
+  border-radius: 3px;
+  background: rgb(84 223 179 / 10%);
+  color: #8aefcc;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.route-avoid-button:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+.route-avoid-button:hover:not(:disabled) {
+  background: rgb(84 223 179 / 20%);
+}
+
+.route-avoid-button:focus-visible {
+  outline: 2px solid #54dfb3;
+  outline-offset: 2px;
 }
 
 .route-hazard-dot {
@@ -234,6 +271,14 @@ body {
   padding: 10px 12px;
   color: #c4cecc;
   font-size: 12px;
+}
+
+.route-avoid-notice {
+  margin: 0;
+  padding: 8px 10px;
+  border-bottom: 1px solid rgb(255 189 74 / 24%);
+  color: #ffd27d;
+  font-size: 11px;
 }
 
 [hidden] {

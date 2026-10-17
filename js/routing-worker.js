@@ -422,10 +422,49 @@ function canTravelReverse(edgeIndex, state) {
   return state.edgeOneway[edgeIndex] !== 1;
 }
 
-function computeRoute(startPoint, endPoint, state) {
+function blockEdgesForPoints(blockedPoints, state) {
+  const blockedEdges = new Uint8Array(state.edgeStart.length);
+  const affected = new Set();
+
+  for (const blocked of blockedPoints) {
+    const latitudeDelta = blocked.radiusM / METERS_PER_DEGREE;
+    const longitudeDelta = latitudeDelta / Math.max(0.01, Math.cos(blocked.point[1] * Math.PI / 180));
+    const left = gridX(blocked.point[0] - longitudeDelta, state);
+    const right = gridX(blocked.point[0] + longitudeDelta, state);
+    const top = gridY(blocked.point[1] - latitudeDelta, state);
+    const bottom = gridY(blocked.point[1] + latitudeDelta, state);
+    const candidates = new Set();
+
+    for (let y = top; y <= bottom; y += 1) {
+      for (let x = left; x <= right; x += 1) {
+        const segments = state.grid.get(y * state.gridWidth + x);
+        if (!segments) continue;
+        for (const segment of segments) candidates.add(segment);
+      }
+    }
+
+    for (const segment of candidates) {
+      const pointIndex = state.segmentFirstPoints[segment];
+      const offset = pointIndex * 2;
+      const first = [state.geometry[offset], state.geometry[offset + 1]];
+      const second = [state.geometry[offset + 2], state.geometry[offset + 3]];
+      if (projectToSegment(blocked.point, first, second).distanceM <= blocked.radiusM) {
+        blockedEdges[state.segmentEdges[segment]] = 1;
+        affected.add(blocked.id);
+      }
+    }
+  }
+
+  return { blockedEdges, blockedPointsAffected: [...affected] };
+}
+
+function computeRoute(startPoint, endPoint, state, blockedPoints = []) {
+  const { blockedEdges, blockedPointsAffected } = blockEdgesForPoints(blockedPoints, state);
   const startSnap = snapToNearestEdge(startPoint, state);
   const endSnap = snapToNearestEdge(endPoint, state);
-  if (!startSnap || !endSnap) return { route: null, reason: "No road is close enough to route from these points." };
+  if (!startSnap || !endSnap) {
+    return { route: null, reason: "No road is close enough to route from these points.", blockedPointsAffected };
+  }
 
   const startEdge = startSnap.edgeIndex;
   const endEdge = endSnap.edgeIndex;
@@ -434,23 +473,23 @@ function computeRoute(startPoint, endPoint, state) {
   const startAlong = Math.min(startEdgeLength, startSnap.alongM);
   const endAlong = Math.min(endEdgeLength, endSnap.alongM);
   const startOptions = [];
-  if (canTravelReverse(startEdge, state)) {
+  if (!blockedEdges[startEdge] && canTravelReverse(startEdge, state)) {
     startOptions.push({ node: state.edgeStart[startEdge], fromM: startAlong, toM: 0 });
   }
-  if (canTravelForward(startEdge, state)) {
+  if (!blockedEdges[startEdge] && canTravelForward(startEdge, state)) {
     startOptions.push({ node: state.edgeEnd[startEdge], fromM: startAlong, toM: startEdgeLength });
   }
 
   const finishOptions = [];
-  if (canTravelForward(endEdge, state)) {
+  if (!blockedEdges[endEdge] && canTravelForward(endEdge, state)) {
     finishOptions.push({ node: state.edgeStart[endEdge], fromM: 0, toM: endAlong });
   }
-  if (canTravelReverse(endEdge, state)) {
+  if (!blockedEdges[endEdge] && canTravelReverse(endEdge, state)) {
     finishOptions.push({ node: state.edgeEnd[endEdge], fromM: endEdgeLength, toM: endAlong });
   }
 
   let best = null;
-  if (startEdge === endEdge) {
+  if (startEdge === endEdge && !blockedEdges[startEdge]) {
     if (endAlong >= startAlong && canTravelForward(startEdge, state)) {
       best = { distanceM: endAlong - startAlong, direct: { edgeIndex: startEdge, fromM: startAlong, toM: endAlong } };
     } else if (endAlong < startAlong && canTravelReverse(startEdge, state)) {
@@ -496,6 +535,7 @@ function computeRoute(startPoint, endPoint, state) {
     for (let adjacencyIndex = first; adjacencyIndex < last; adjacencyIndex += 1) {
       const neighbor = state.adjacencyNeighbors[adjacencyIndex];
       const edgeIndex = state.adjacencyEdges[adjacencyIndex];
+      if (blockedEdges[edgeIndex]) continue;
       const candidate = distance + state.edgeLength[edgeIndex];
       if (candidate < distances[neighbor] && (!best || candidate < best.distanceM)) {
         distances[neighbor] = candidate;
@@ -507,7 +547,9 @@ function computeRoute(startPoint, endPoint, state) {
     }
   }
 
-  if (!best) return { route: null, reason: "No route exists between the selected points." };
+  if (!best) {
+    return { route: null, reason: "No route exists between the selected points.", blockedPointsAffected };
+  }
 
   let chunks;
   if (best.direct) {
@@ -575,17 +617,29 @@ function computeRoute(startPoint, endPoint, state) {
       startSnap: startSnap.coordinate,
       endSnap: endSnap.coordinate,
     },
+    blockedPointsAffected,
   };
 }
 
 self.addEventListener("message", async (event) => {
-  const { type, requestId, start, destination } = event.data || {};
+  const { type, requestId, start, destination, blockedPoints: requestedBlockedPoints } = event.data || {};
   if (type !== "route") return;
 
   try {
     const state = await ensureGraph();
     const computeStart = performance.now();
-    const result = computeRoute(start, destination, state);
+    const blockedPoints = Array.isArray(requestedBlockedPoints)
+      ? requestedBlockedPoints.flatMap((blocked, index) => {
+        const point = blocked?.point;
+        if (!Array.isArray(point) || point.length !== 2
+            || !Number.isFinite(point[0]) || !Number.isFinite(point[1])) return [];
+        const radiusM = Number.isFinite(blocked.radiusM) && blocked.radiusM > 0
+          ? blocked.radiusM
+          : 40;
+        return [{ id: blocked.id ?? index, point, radiusM }];
+      })
+      : [];
+    const result = computeRoute(start, destination, state, blockedPoints);
     self.postMessage({
       type: "route-result",
       requestId,

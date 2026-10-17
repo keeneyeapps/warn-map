@@ -51,6 +51,13 @@ export function setupRouting(map, {
   let graphTransfer = null;
   let destination = null;
   let activeRoute = null;
+  let routeStartPoint = null;
+  let routeDestinationPoint = null;
+  let baseRouteDistanceM = 0;
+  let avoidClosures = [];
+  let avoidNotice = "";
+  let avoidNoticeTimer = null;
+  let avoidPending = false;
   let hazardFeatures = [];
   let routeHazardRows = [];
   let liveFix = null;
@@ -127,6 +134,24 @@ export function setupRouting(map, {
     routeHint.hidden = false;
   }
 
+  function closureKey(feature) {
+    const id = feature.id ?? feature.properties.id;
+    return id === undefined || id === null
+      ? `${feature.geometry.coordinates[0]},${feature.geometry.coordinates[1]}`
+      : String(id);
+  }
+
+  function showAvoidNotice() {
+    avoidNotice = "No alternative route around this closure";
+    renderRouteHazards();
+    if (avoidNoticeTimer !== null) clearTimeout(avoidNoticeTimer);
+    avoidNoticeTimer = window.setTimeout(() => {
+      avoidNoticeTimer = null;
+      avoidNotice = "";
+      renderRouteHazards();
+    }, 5000);
+  }
+
   function renderRouteHazards() {
     if (!activeRoute) {
       hazardsPanel.hidden = true;
@@ -136,8 +161,16 @@ export function setupRouting(map, {
     }
 
     hazardsPanel.hidden = false;
-    hazardsTitle.textContent = `${routeHazardRows.length} ${routeHazardRows.length === 1 ? "hazard" : "hazards"} on your route`;
+    const onRouteCount = routeHazardRows.filter((row) => !row.offRoute).length;
+    hazardsTitle.textContent = `${onRouteCount} ${onRouteCount === 1 ? "hazard" : "hazards"} on your route`;
     hazardsList.replaceChildren();
+    if (avoidNotice) {
+      const notice = document.createElement("p");
+      notice.className = "route-avoid-notice";
+      notice.setAttribute("role", "status");
+      notice.textContent = avoidNotice;
+      hazardsList.append(notice);
+    }
     if (routeHazardRows.length === 0) {
       const emptyMessage = document.createElement("p");
       emptyMessage.className = "route-hazards-empty";
@@ -149,10 +182,15 @@ export function setupRouting(map, {
     const now = Date.now();
     for (const row of routeHazardRows) {
       const properties = row.feature.properties;
+      const key = closureKey(row.feature);
+      const isAvoided = properties.category === "CLOSURES"
+        && avoidClosures.some((closure) => closure.id === key);
+      const entry = document.createElement("div");
+      entry.className = "route-hazard-entry";
+      entry.setAttribute("role", "listitem");
       const button = document.createElement("button");
       button.className = "route-hazard-row";
       button.type = "button";
-      button.setAttribute("role", "listitem");
 
       const dot = document.createElement("span");
       dot.className = "route-hazard-dot";
@@ -178,20 +216,97 @@ export function setupRouting(map, {
         map.flyTo({ center: coordinate, zoom: Math.max(map.getZoom(), 14) });
         openHazardPopup(map, properties, coordinate);
       });
-      hazardsList.append(button);
+      entry.append(button);
+      if (properties.category === "CLOSURES") {
+        const avoidButton = document.createElement("button");
+        avoidButton.className = "route-avoid-button";
+        avoidButton.type = "button";
+        avoidButton.textContent = isAvoided ? "Stop avoiding" : "Route around";
+        avoidButton.disabled = avoidPending;
+        avoidButton.addEventListener("click", () => toggleClosureAvoidance(row));
+        entry.append(avoidButton);
+      }
+      hazardsList.append(entry);
     }
   }
 
   function recomputeRouteHazards() {
-    routeHazardRows = activeRoute
+    const rows = activeRoute
       ? hazardsAlongRoute(hazardFeatures, activeRoute, liveFix)
       : [];
+    const rowByKey = new Map(rows.map((row) => [closureKey(row.feature), row]));
+    for (const closure of avoidClosures) {
+      const currentRow = rowByKey.get(closure.id);
+      if (currentRow) {
+        currentRow.isAvoided = true;
+      } else if (closure.row) {
+        rows.push({ ...closure.row, isAvoided: true, offRoute: true });
+      }
+    }
+    rows.sort((first, second) => first.distanceAheadM - second.distanceAheadM);
+    routeHazardRows = rows;
     renderRouteHazards();
   }
 
   function setHazards(features) {
     hazardFeatures = features;
     recomputeRouteHazards();
+  }
+
+  async function toggleClosureAvoidance(row) {
+    if (avoidPending || !routeStartPoint || !routeDestinationPoint || !activeRoute) return;
+    const key = closureKey(row.feature);
+    const alreadyAvoided = avoidClosures.some((closure) => closure.id === key);
+    const candidateClosures = alreadyAvoided
+      ? avoidClosures.filter((closure) => closure.id !== key)
+      : [...avoidClosures, {
+        id: key,
+        point: row.feature.geometry.coordinates,
+        radiusM: 40,
+        feature: row.feature,
+        row,
+      }];
+    clearAvoidNotice();
+    avoidPending = true;
+    const requestStart = routeStartPoint;
+    const requestDestination = routeDestinationPoint;
+    renderRouteHazards();
+
+    try {
+      const result = await requestWorkerRoute(
+        routeStartPoint,
+        routeDestinationPoint,
+        candidateClosures.map(({ id, point, radiusM }) => ({ id, point, radiusM })),
+      );
+      if (routeStartPoint !== requestStart || routeDestinationPoint !== requestDestination) return;
+      if (!result.route) {
+        if (!alreadyAvoided) showAvoidNotice();
+        return;
+      }
+
+      const affected = new Set((result.blockedPointsAffected || []).map(String));
+      if (!alreadyAvoided && !affected.has(key)) {
+        showAvoidNotice();
+        return;
+      }
+
+      avoidClosures = candidateClosures.filter((closure) => affected.has(closure.id));
+      installRoute(result.route);
+      if (avoidClosures.length > 0) {
+        const additionalMiles = Math.max(0, (result.route.totalDistanceM - baseRouteDistanceM) / 1609.344);
+        const additionalText = additionalMiles > 0 && additionalMiles < 0.1
+          ? additionalMiles.toFixed(2)
+          : additionalMiles.toFixed(1);
+        routeStatus.textContent = `Avoiding ${avoidClosures.length} ${avoidClosures.length === 1 ? "closure" : "closures"} · +${additionalText} mi`;
+      } else {
+        routeStatus.textContent = formatRouteStatus(result.route);
+      }
+    } catch {
+      if (!alreadyAvoided) showAvoidNotice();
+    } finally {
+      avoidPending = false;
+      renderRouteHazards();
+    }
   }
 
   function onLocationFix(point) {
@@ -207,49 +322,73 @@ export function setupRouting(map, {
     }, delay);
   }
 
+  function clearAvoidNotice() {
+    if (avoidNoticeTimer !== null) clearTimeout(avoidNoticeTimer);
+    avoidNoticeTimer = null;
+    avoidNotice = "";
+  }
+
+  function requestWorkerRoute(start, end, blockedPoints = []) {
+    if (!validPoint(start) || !validPoint(end)) {
+      return Promise.reject(new Error("Route coordinates are invalid."));
+    }
+    const id = ++requestId;
+    return new Promise((resolve, reject) => {
+      pendingRequests.set(id, { resolve, reject });
+      worker.postMessage({ type: "route", requestId: id, start, destination: end, blockedPoints });
+    });
+  }
+
+  function installRoute(route) {
+    activeRoute = route;
+    lastRouteFeature = {
+      type: "Feature",
+      geometry: { type: "LineString", coordinates: route.geometry },
+      properties: {},
+    };
+    map.getSource(SOURCE_ID).setData(lastRouteFeature);
+    clearRouteButton.hidden = false;
+    routeAction.hidden = true;
+    lastFixRecomputeAt = performance.now();
+    recomputeRouteHazards();
+    map.fitBounds(routeBounds(route.geometry), {
+      padding: { top: 112, right: 52, bottom: 132, left: 52 },
+      maxZoom: 12.5,
+      duration: 450,
+    });
+  }
+
   function clearRoute(message = "") {
     map.getSource(SOURCE_ID).setData({ type: "FeatureCollection", features: [] });
     lastRouteFeature = null;
     activeRoute = null;
+    routeStartPoint = null;
+    routeDestinationPoint = null;
+    baseRouteDistanceM = 0;
+    avoidClosures = [];
+    clearAvoidNotice();
     routeStatus.textContent = message;
     clearRouteButton.hidden = true;
     recomputeRouteHazards();
   }
 
   function calculateRoute(start, end) {
-    if (!validPoint(start) || !validPoint(end)) {
-      return Promise.reject(new Error("Route coordinates are invalid."));
-    }
-    const id = ++requestId;
     routeStatus.textContent = "Calculating route…";
-    return new Promise((resolve, reject) => {
-      pendingRequests.set(id, { resolve, reject });
-      worker.postMessage({ type: "route", requestId: id, start, destination: end });
-    }).then((data) => {
+    return requestWorkerRoute(start, end).then((data) => {
       if (!data.route) {
         clearRoute(data.reason || "No route exists.");
         return data;
       }
-      lastRouteFeature = {
-        type: "Feature",
-        geometry: { type: "LineString", coordinates: data.route.geometry },
-        properties: {},
-      };
-      activeRoute = data.route;
+      clearAvoidNotice();
+      avoidClosures = [];
+      routeStartPoint = start;
+      routeDestinationPoint = end;
+      baseRouteDistanceM = data.route.totalDistanceM;
       const currentLocation = getLatestLocation();
       if (validPoint(currentLocation)) liveFix = currentLocation;
-      map.getSource(SOURCE_ID).setData(lastRouteFeature);
-      clearRouteButton.hidden = false;
-      routeAction.hidden = true;
+      installRoute(data.route);
       routeStatus.textContent = formatRouteStatus(data.route);
-      lastFixRecomputeAt = performance.now();
-      recomputeRouteHazards();
       dismissHint();
-      map.fitBounds(routeBounds(data.route.geometry), {
-        padding: { top: 112, right: 52, bottom: 132, left: 52 },
-        maxZoom: 12.5,
-        duration: 450,
-      });
       return data;
     }).catch((error) => {
       clearRoute(error.message || "Routing is unavailable.");
@@ -339,6 +478,11 @@ export function setupRouting(map, {
       route: (startLatLon, destinationLatLon) => calculateRoute(
         [startLatLon[1], startLatLon[0]],
         [destinationLatLon[1], destinationLatLon[0]],
+      ),
+      routeWithBlockedPoints: (startLatLon, destinationLatLon, blockedPoints = []) => requestWorkerRoute(
+        [startLatLon[1], startLatLon[0]],
+        [destinationLatLon[1], destinationLatLon[0]],
+        blockedPoints,
       ),
       workerLoadTime: () => workerLoadTimeMs,
       graphTransfer: () => graphTransfer,
