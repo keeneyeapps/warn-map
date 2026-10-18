@@ -365,6 +365,26 @@ body {
   white-space: nowrap;
 }
 
+.route-leg-text {
+  grid-column: 3;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.route-leg-call,
+.place-call {
+  color: #76e8c1;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.route-leg-call {
+  align-self: flex-start;
+  padding: 3px 0;
+  font-size: 12px;
+}
+
 .route-leg-distances {
   grid-column: 4;
   display: grid;
@@ -591,20 +611,23 @@ body {
   white-space: nowrap;
 }
 
-.hazard-popup h2 {
+.hazard-popup h2,
+.place-popup h2 {
   margin: 0 0 4px;
   color: #171b1d;
   font-size: 15px;
   line-height: 1.3;
 }
 
-.hazard-popup p {
+.hazard-popup p,
+.place-popup p {
   margin: 4px 0 0;
   color: #353b3d;
   font-size: 12px;
 }
 
-.hazard-popup .hazard-popup-category {
+.hazard-popup .hazard-popup-category,
+.place-popup .place-popup-type {
   margin-top: 0;
   color: #586164;
   font-weight: 600;
@@ -880,4 +903,11 @@ body {
 #address-sheet-close:focus-visible {
   outline: 3px solid #53c7a2;
   outline-offset: 1px;
+}
+
+.place-popup .place-call {
+  display: inline-block;
+  padding: 6px 0;
+  color: #0b6b4f;
+  font-size: 14px;
 }

@@ -52,8 +52,103 @@
       }
     },
     "places": {
-      "path": null,
-      "source": null
+      "path": "places/kenai-places.json",
+      "osm": {
+        "download_to": "tools/alaska-latest.osm.pbf",
+        "licence": "OpenStreetMap data, ODbL, via Geofabrik (the same extract as the road graph)."
+      },
+      "keep_upper": ["KPB", "CES", "WESA", "KESA", "EMS", "USDA", "AVTEC", "DMV", "US", "KPC", "VFW", "AK"],
+      "sources": [
+        {
+          "name": "Kenai Peninsula Borough, KPB Facilities",
+          "type": "arcgis-feature-service",
+          "url": "https://services.arcgis.com/ba4DH9pIcqkXJVfl/arcgis/rest/services/KPB_Facilities_view/FeatureServer/0/query",
+          "item": "KPB GeoHub item c9fad3c1733c4de389eea99c3bfcb852",
+          "order_by": "OBJECTID",
+          "page_size": 2000,
+          "download_to": "tools/kpb-facilities.geojson",
+          "licence": "Provided by the Kenai Peninsula Borough without warranty; the Borough assumes no liability for its use.",
+          "fields": { "name": "NAME", "category": "CATEGORY", "geometry": "Point" },
+          "categories": {
+            "AIRPORT": ["transport", "Airport"],
+            "AIRSTRIP": ["transport", "Airstrip"],
+            "BOAT DOCK": ["transport", "Dock"],
+            "BOAT HARBOR": ["transport", "Boat harbor"],
+            "BOROUGH FACILITY": ["government", "Borough facility"],
+            "BOROUGH OFFICE": ["government", "Borough office"],
+            "CEMETERY": ["landmark", "Cemetery"],
+            "CITY OFFICE": ["government", "City office"],
+            "COLLEGE": ["school", "College"],
+            "COMMUNITY CENTER": ["government", "Community center"],
+            "DEPOT": ["transport", "Train depot"],
+            "EMERGENCY RESOURCE": null,
+            "EMERGENCY SHELTER": ["emergency", "Emergency shelter"],
+            "FEDERAL OFFICE": ["government", "Federal office"],
+            "FERRY TERMINAL": ["transport", "Ferry terminal"],
+            "FILL SITE": null,
+            "FIRE STATION": ["emergency", "Fire station"],
+            "HELIPORT": ["transport", "Heliport"],
+            "HOSPITAL": ["health", "Hospital"],
+            "LANDFILL": ["government", "Landfill"],
+            "LANDFILL/TRANSFER FACILITY": ["government", "Transfer site"],
+            "LEARNING CENTER": ["school", "Learning center"],
+            "LEVEE": null,
+            "LIBRARY": ["government", "Library"],
+            "MEDICAL": ["health", "Clinic"],
+            "MUSEUM": ["landmark", "Museum"],
+            "POLICE STATION": ["emergency", "Police"],
+            "POST OFFICE": ["government", "Post office"],
+            "PRISON": ["government", "Prison"],
+            "PRIVATE SCHOOL": ["school", "School"],
+            "RECREATION": ["other", "Recreation"],
+            "RESERVOIR": null,
+            "SCHOOL": ["school", "School"],
+            "SENIOR CENTER": ["government", "Senior center"],
+            "SIREN": null,
+            "STATE FACILITY": ["government", "State facility"],
+            "STATE OFFICE": ["government", "State office"],
+            "VISITOR CENTER": ["landmark", "Visitor center"],
+            "WATER TOWER": null,
+            "WATER TREATMENT FACILITY": ["government", "Water treatment"]
+          }
+        },
+        {
+          "name": "Kenai Peninsula Borough, KPB Boat Launches",
+          "type": "arcgis-feature-service",
+          "url": "https://services.arcgis.com/ba4DH9pIcqkXJVfl/arcgis/rest/services/KPB_Boat_Launches/FeatureServer/0/query",
+          "item": "KPB GeoHub item 020713939ab64b67a127f2494da8494f",
+          "order_by": "OBJECTID",
+          "page_size": 2000,
+          "download_to": "tools/kpb-boat-launches.geojson",
+          "licence": "Provided by the Kenai Peninsula Borough without warranty; the Borough assumes no liability for its use.",
+          "fields": { "name": "NAME", "geometry": "Point" },
+          "category": ["park", "Boat launch"]
+        },
+        {
+          "name": "Kenai Peninsula Borough, KPB Parks",
+          "type": "arcgis-feature-service",
+          "url": "https://services.arcgis.com/ba4DH9pIcqkXJVfl/arcgis/rest/services/KPB_Parks_view/FeatureServer/0/query",
+          "item": "KPB GeoHub item 90543f68bc764be39ccc87ef4e6f0038",
+          "order_by": "OBJECTID",
+          "page_size": 2000,
+          "download_to": "tools/kpb-parks.geojson",
+          "licence": "Provided by the Kenai Peninsula Borough without warranty; the Borough assumes no liability for its use.",
+          "fields": { "name": "NAME", "website": "LINK", "geometry": "Point" },
+          "category": ["park", "Park"]
+        },
+        {
+          "name": "Kenai Peninsula Borough, KPB Campgrounds",
+          "type": "arcgis-feature-service",
+          "url": "https://services.arcgis.com/ba4DH9pIcqkXJVfl/arcgis/rest/services/KPB_Campgrounds_view/FeatureServer/0/query",
+          "item": "KPB GeoHub item 6b23ed766d0c4b508af658e6057a3c1c",
+          "order_by": "OBJECTID",
+          "page_size": 2000,
+          "download_to": "tools/kpb-campgrounds.geojson",
+          "licence": "Provided by the Kenai Peninsula Borough without warranty; the Borough assumes no liability for its use.",
+          "fields": { "name": "NAME", "website": "LINK", "geometry": "Point" },
+          "category": ["lodging", "Campground"]
+        }
+      ]
     }
   },
   "wildlife": {

@@ -1,9 +1,11 @@
-// Typed-address lookup over the on-device index (the region pack's addresses file). The index is a static file
-// served with the app and precached by the service worker; nothing here sends a query anywhere.
+// Typed-address and named-place lookup over the on-device indexes (the region pack's addresses and places
+// files). Both are static files served with the app and precached by the service worker; nothing here sends a
+// query anywhere.
 
 import { regionFileUrl } from "./region.js";
 
 const INDEX_URL = regionFileUrl("addresses");
+const PLACES_URL = regionFileUrl("places");
 const MAX_SUGGESTIONS = 8;
 const NEAREST_NUMBERS_PER_STREET = 2;
 const METERS_PER_DEGREE = 111_320;
@@ -57,14 +59,41 @@ function prepareIndex(data) {
   return { places, streets, placeNames: new Set(places.map((place) => place.joined)) };
 }
 
+// Named places (businesses, services, facilities): [name, category, label, city, address, phone, website, lon, lat].
+function prepareNamedPlaces(data) {
+  return data.places.map(([name, category, label, city, address, phone, website, longitude, latitude]) => {
+    const tokens = normaliseTokens(name);
+    const cityName = city >= 0 ? data.cities[city] : "";
+    return {
+      name,
+      tokens,
+      joined: tokens.join(" "),
+      context: [...normaliseTokens(data.labels[label]), ...normaliseTokens(cityName)],
+      cityJoined: normaliseTokens(cityName).join(" "),
+      category: data.categories[category],
+      label: data.labels[label],
+      city: cityName,
+      address,
+      phone,
+      website,
+      point: [longitude, latitude],
+    };
+  });
+}
+
+async function fetchJson(url, what) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${what} request failed (${response.status})`);
+  return response.json();
+}
+
 export function loadAddressIndex() {
   if (!indexPromise) {
-    indexPromise = fetch(INDEX_URL)
-      .then((response) => {
-        if (!response.ok) throw new Error(`Address index request failed (${response.status})`);
-        return response.json();
-      })
-      .then(prepareIndex)
+    indexPromise = Promise.all([
+      fetchJson(INDEX_URL, "Address index").then(prepareIndex),
+      PLACES_URL ? fetchJson(PLACES_URL, "Places index").then(prepareNamedPlaces) : [],
+    ])
+      .then(([index, namedPlaces]) => ({ ...index, namedPlaces }))
       .catch((error) => {
         indexPromise = null;
         throw error;
@@ -117,6 +146,44 @@ function streetQuality(street, queryTokens) {
   return wholeWords ? 2 : 1;
 }
 
+// Like streetQuality for a place name, except typed words that miss the name may match its type or city
+// ("soldotna post" finds a post office in Soldotna). At least one word must hit the name; such partial
+// matches score 0.5, below every whole-name match.
+function placeQuality(place, queryTokens) {
+  const used = new Array(place.tokens.length).fill(false);
+  let wholeWords = true;
+  let nameHits = 0;
+  let contextHits = 0;
+  for (const token of queryTokens) {
+    let hit = place.tokens.findIndex((word, index) => !used[index] && word === token);
+    if (hit < 0) {
+      hit = place.tokens.findIndex((word, index) => !used[index] && word.startsWith(token));
+      if (hit >= 0) wholeWords = false;
+    }
+    if (hit >= 0) {
+      used[hit] = true;
+      nameHits += 1;
+    } else if (place.context.some((word) => word.startsWith(token))) {
+      contextHits += 1;
+    } else {
+      return 0;
+    }
+  }
+  if (nameHits === 0) return 0;
+  if (contextHits > 0) return 0.5;
+  const typed = queryTokens.join(" ");
+  if (place.joined === typed) return 4;
+  if (place.joined.startsWith(typed)) return 3;
+  return wholeWords ? 2 : 1;
+}
+
+// A place matches "well" when its name is, or starts with, what was typed; those rank above streets.
+const WELL_MATCHED_PLACE = 3;
+
+function placeLabel(place) {
+  return `${place.name} · ${place.label}${place.city ? `, ${place.city}` : ""}`;
+}
+
 function addressLabel(number, street, unit, city) {
   return `${number} ${street}${unit ? ` ${unit}` : ""}${city ? `, ${city}` : ""}`;
 }
@@ -135,18 +202,41 @@ function nearestRow(rows, location) {
 }
 
 /**
- * Suggestions for typed text, best first. Each is { label, kind: "address" | "street", point() }, where
- * point() gives the [longitude, latitude] to route to (for a street: the address nearest `location`,
- * or the street's middle address when location is unknown).
+ * Suggestions for typed text, best first. Each is { label, kind: "address" | "street" | "place", point() },
+ * where point() gives the [longitude, latitude] to route to (for a street: the address nearest `location`,
+ * or the street's middle address when location is unknown). A place suggestion also has `place`: its name,
+ * type label, city, street address, and phone (public business or facility records only).
+ *
+ * Order: addresses for a typed house number; then places whose name is or starts with the typed text; then
+ * streets; then other place matches. Within a place group, nearest first when the location is known.
  */
 export async function searchAddresses(text, location = null) {
   const index = await loadAddressIndex();
   const query = parseQuery(text, index);
-  if (query.streetTokens.length === 0) return [];
   const hasLocation = Array.isArray(location) && location.every(Number.isFinite);
 
   const candidates = [];
-  for (const street of index.streets) {
+  const placeTokens = normaliseTokens(String(text ?? "").split(",")[0]);
+  if (placeTokens.length > 0) {
+    for (const place of index.namedPlaces) {
+      const quality = placeQuality(place, placeTokens);
+      if (quality === 0) continue;
+      candidates.push({
+        tier: quality >= WELL_MATCHED_PLACE ? 1 : 3,
+        cityMatch: Boolean(query.city) && place.cityJoined.startsWith(query.city),
+        exactNumber: false,
+        quality,
+        numberGap: 0,
+        distance: hasLocation ? distanceMeters(location, place.point) : Infinity,
+        kind: "place",
+        label: placeLabel(place),
+        point: () => place.point,
+        place: { name: place.name, label: place.label, city: place.city, address: place.address, phone: place.phone },
+      });
+    }
+  }
+
+  for (const street of query.streetTokens.length > 0 ? index.streets : []) {
     const quality = streetQuality(street, query.streetTokens);
     if (quality === 0) continue;
     for (const group of street.groups.values()) {
@@ -160,6 +250,7 @@ export async function searchAddresses(text, location = null) {
         const distance = hasLocation ? nearestRow(group.rows, location).distance : Infinity;
         candidates.push({
           ...base,
+          tier: 2,
           exactNumber: false,
           numberGap: 0,
           distance,
@@ -180,6 +271,7 @@ export async function searchAddresses(text, location = null) {
       for (const row of rows) {
         candidates.push({
           ...base,
+          tier: 0,
           exactNumber: exact.length > 0,
           numberGap: Math.abs(row.number - query.number),
           distance: hasLocation ? distanceMeters(location, row.point) : Infinity,
@@ -192,7 +284,8 @@ export async function searchAddresses(text, location = null) {
   }
 
   candidates.sort((first, second) => (
-    (second.cityMatch - first.cityMatch)
+    (first.tier - second.tier)
+    || (second.cityMatch - first.cityMatch)
     || (second.exactNumber - first.exactNumber)
     || (second.quality - first.quality)
     || (first.numberGap - second.numberGap)
@@ -205,7 +298,9 @@ export async function searchAddresses(text, location = null) {
   for (const candidate of candidates) {
     if (seen.has(candidate.label)) continue;
     seen.add(candidate.label);
-    results.push({ label: candidate.label, kind: candidate.kind, point: candidate.point });
+    const result = { label: candidate.label, kind: candidate.kind, point: candidate.point };
+    if (candidate.place) result.place = candidate.place;
+    results.push(result);
     if (results.length === MAX_SUGGESTIONS) break;
   }
   return results;

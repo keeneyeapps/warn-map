@@ -196,6 +196,10 @@ export function setupRouting(map, {
   // Typed-address text for each slot; null when the point came from the map or the long-press menu.
   let startLabel = null;
   let destinationLabel = null;
+  // The named place a slot was set from ({ name, label, city, address, phone }), or null.
+  let startPlace = null;
+  let destinationPlace = null;
+  const placePopups = new WeakMap();
   let customStart = null;
   let stops = [];
   let nextStopId = 0;
@@ -361,7 +365,57 @@ export function setupRouting(map, {
     stopMarkers = stops.map((stop, index) => new maplibregl.Marker({
       element: markerElement("route-marker-stop", String(index + 1), `Stop ${index + 1}`),
     }).setLngLat(stop.point).addTo(map));
+    attachPlacePopup(startMarker, customStart ? startPlace : null);
+    attachPlacePopup(destinationMarker, destinationPlace);
+    stopMarkers.forEach((marker, index) => attachPlacePopup(marker, stops[index].place));
     renderRouteBar();
+  }
+
+  // Tap-to-call link for a place's public phone number; the only thing on the page that can dial.
+  function callLink(place, className) {
+    const link = document.createElement("a");
+    link.className = className;
+    link.href = `tel:${place.phone.replace(/-/g, "")}`;
+    link.textContent = `Call ${place.phone.replace(/^\+1-/, "")}`;
+    link.setAttribute("aria-label", `Call ${place.name}, ${place.phone}`);
+    return link;
+  }
+
+  function placePopupContent(place) {
+    const article = document.createElement("article");
+    article.className = "place-popup";
+    const title = document.createElement("h2");
+    title.textContent = place.name;
+    const type = document.createElement("p");
+    type.className = "place-popup-type";
+    type.textContent = place.label;
+    article.append(title, type);
+    const where = [place.address, place.city].filter(Boolean).join(", ");
+    if (where) {
+      const address = document.createElement("p");
+      address.textContent = where;
+      article.append(address);
+    }
+    if (place.phone) {
+      const phone = document.createElement("p");
+      phone.append(callLink(place, "place-call"));
+      article.append(phone);
+    }
+    return article;
+  }
+
+  function attachPlacePopup(marker, place) {
+    if (!marker) return;
+    if (!place) {
+      if (marker.getPopup()) marker.setPopup(null);
+      return;
+    }
+    if (!placePopups.has(place)) {
+      placePopups.set(place, new maplibregl.Popup({ closeButton: true, maxWidth: "300px", offset: 18 })
+        .setDOMContent(placePopupContent(place)));
+    }
+    const popup = placePopups.get(place);
+    if (marker.getPopup() !== popup) marker.setPopup(popup);
   }
 
   function setSlot(slot, label, value, isSet) {
@@ -394,16 +448,18 @@ export function setupRouting(map, {
     renderRouteBar();
   }
 
-  function setPlanPoint(target, point, label = null) {
+  function setPlanPoint(target, point, label = null, place = null) {
     if (target === "start") {
       customStart = point;
       startLabel = label;
+      startPlace = place;
     } else if (target === "stop") {
       nextStopId += 1;
-      stops.push({ id: nextStopId, point, label });
+      stops.push({ id: nextStopId, point, label, place });
     } else if (target === "destination") {
       destinationPoint = point;
       destinationLabel = label;
+      destinationPlace = place;
     } else {
       return;
     }
@@ -465,9 +521,13 @@ export function setupRouting(map, {
     const target = sheetTarget;
     if (!target) return;
     const point = suggestion.point();
-    const label = suggestion.kind === "street" ? suggestion.label.replace(/ \(street\)$/, "") : suggestion.label;
+    // A place slot shows the place's name; its type, city, and phone stay with the slot for details.
+    const place = suggestion.kind === "place" ? suggestion.place : null;
+    const label = place
+      ? place.name
+      : suggestion.kind === "street" ? suggestion.label.replace(/ \(street\)$/, "") : suggestion.label;
     closeAddressSheet();
-    setPlanPoint(target, point, label);
+    setPlanPoint(target, point, label, place);
   }
 
   async function runAddressSearch() {
@@ -478,13 +538,13 @@ export function setupRouting(map, {
       addressStatus.textContent = "";
       return;
     }
-    addressStatus.textContent = "Loading addresses…";
+    addressStatus.textContent = "Loading addresses and places…";
     try {
       const location = getLatestLocation();
       const suggestions = await searchAddresses(text, Array.isArray(location) ? location : null);
       if (serial !== searchSerial) return;
       renderSuggestions(suggestions);
-      addressStatus.textContent = suggestions.length > 0 ? "" : "No matching addresses";
+      addressStatus.textContent = suggestions.length > 0 ? "" : "No matching addresses or places";
     } catch {
       if (serial !== searchSerial) return;
       renderSuggestions([]);
@@ -519,7 +579,9 @@ export function setupRouting(map, {
     clearRouteButton.hidden = !hasPlan();
   }
 
-  function waypointRow({ kind, badge, label, legIndex = null, cumulative = [], stop = null, stopIndex = null }) {
+  function waypointRow({
+    kind, badge, label, place = null, legIndex = null, cumulative = [], stop = null, stopIndex = null,
+  }) {
     const row = document.createElement("li");
     row.className = `route-leg route-leg-${kind}`;
 
@@ -547,7 +609,14 @@ export function setupRouting(map, {
     const labelElement = document.createElement("span");
     labelElement.className = "route-leg-label";
     labelElement.textContent = label;
-    row.append(badgeElement, labelElement);
+    if (place?.phone) {
+      const text = document.createElement("span");
+      text.className = "route-leg-text";
+      text.append(labelElement, callLink(place, "route-leg-call"));
+      row.append(badgeElement, text);
+    } else {
+      row.append(badgeElement, labelElement);
+    }
 
     if (legIndex !== null) {
       const distances = document.createElement("span");
@@ -709,12 +778,14 @@ export function setupRouting(map, {
       kind: "start",
       badge: "S",
       label: customStart ? `Start · ${startLabel || "pin"}` : "Start · your location",
+      place: customStart ? startPlace : null,
     }));
     stops.forEach((stop, index) => {
       list.append(waypointRow({
         kind: "stop",
         badge: String(index + 1),
         label: stop.label ? `Stop ${index + 1} · ${stop.label}` : `Stop ${index + 1}`,
+        place: stop.place,
         legIndex: destinationPoint ? index : null,
         cumulative,
         stop,
@@ -726,6 +797,7 @@ export function setupRouting(map, {
         kind: "destination",
         badge: "D",
         label: destinationLabel ? `Destination · ${destinationLabel}` : "Destination",
+        place: destinationPlace,
         legIndex: stops.length,
         cumulative,
       }));
@@ -1014,6 +1086,8 @@ export function setupRouting(map, {
     planVersion += 1;
     startLabel = null;
     destinationLabel = null;
+    startPlace = null;
+    destinationPlace = null;
     closeAddressSheet();
     clearRouteLine();
     pendingPoint = null;
@@ -1118,6 +1192,7 @@ export function setupRouting(map, {
   function useMyLocation() {
     customStart = null;
     startLabel = null;
+    startPlace = null;
     const currentLocation = getLatestLocation();
     if (validPoint(currentLocation)) liveFix = currentLocation;
     planChanged();
@@ -1325,6 +1400,8 @@ export function setupRouting(map, {
         customStart = [startLatLon[1], startLatLon[0]];
         startLabel = null;
         destinationLabel = null;
+        startPlace = null;
+        destinationPlace = null;
         stops = [];
         destinationPoint = [destinationLatLon[1], destinationLatLon[0]];
         return planChanged();

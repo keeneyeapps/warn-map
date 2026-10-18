@@ -3,4 +3,5 @@ tools/*
 !tools/build_graph.py
 !tools/build_addresses.py
 !tools/build_tiles.py
+!tools/build_places.py
 !tools/region.py
