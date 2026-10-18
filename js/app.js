@@ -1,4 +1,6 @@
 import * as maplibregl from "../vendor/maplibre-gl.js";
+import { setupAlerts } from "./alerts.js";
+import { setCardLocationSource } from "./cards.js";
 import { REGION_FILE } from "./config.js";
 import { applyDriverQuery, setupDriverTools } from "./driver.js";
 import { startHazardLayer } from "./hazards.js";
@@ -9,6 +11,7 @@ const MOVING_SPEED_MS = 1.5;
 const MIN_COURSE_DISTANCE_M = 15;
 
 applyDriverQuery();
+setCardLocationSource(() => latestLocation);
 
 const map = createMap("map");
 const locationStatus = document.querySelector("#location-status");
@@ -17,6 +20,7 @@ const wakeStatus = document.querySelector("#wake-status");
 let activeWakeLock = null;
 let latestLocation = null;
 let routingController = null;
+let alerts = null;
 let watchId = null;
 let followMode = "off";
 let followPaused = false;
@@ -123,6 +127,8 @@ function onWatchFix({ coords }) {
   const course = courseForFix(coords, point);
   if (course !== null) lastCourse = course;
   setLatestLocation(point);
+  // Spoken alerts need a fresh course: a stopped or slow fix never reuses an old heading.
+  if (course !== null) alerts?.onFix({ point, course });
   const firstFix = !receivedWatchFix;
   receivedWatchFix = true;
   if (firstFix) showToast("Showing your location on this device.");
@@ -246,7 +252,15 @@ map.on("dragstart", (event) => {
 map.once("style.load", () => {
   let hazardLayer;
   hazardLayer = startHazardLayer(map, {
-    onHazardsUpdate: (features) => routingController?.setHazards(features),
+    onHazardsUpdate: (features) => {
+      routingController?.setHazards(features);
+      alerts?.setHazards(features);
+    },
+  });
+  alerts = setupAlerts({
+    strip: document.querySelector("#hazard-status"),
+    cardHost: document.querySelector("#alert-cards"),
+    lastHazardPoll: () => hazardLayer.lastSuccessAt(),
   });
   routingController = setupRouting(map, {
     getLatestLocation: () => latestLocation,

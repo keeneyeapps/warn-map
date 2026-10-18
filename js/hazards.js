@@ -1,4 +1,5 @@
 import * as maplibregl from "../vendor/maplibre-gl.js";
+import { openHazardCard } from "./cards.js";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./config.js";
 
 const SOURCE_ID = "live-hazards";
@@ -96,6 +97,16 @@ const typeLabels = {
   PEDESTRIAN_IN_ROAD: "Person in the road",
 };
 
+// Spoken nouns: AlertWording.descriptor exactly (road damage is "Road damage" there; the map's "Rough road" is a
+// display choice). Spoken alerts never name a lane or a direction.
+const spokenLabels = { ...typeLabels, DAMAGE_MY_LANE: "Road damage", DAMAGE_ONCOMING: "Road damage",
+  DAMAGE_BOTH_LANES: "Road damage" };
+// SpokenAgePolicy: the exact codes whose spoken alert ends with "last seen N minutes ago". Any other code, including
+// an unknown one, says no age (pedestrians and downed lines are vetoed; road damage, ice and the like persist).
+const SPEAKS_AGE = new Set(["MOOSE", "CARIBOU", "BEAR", "ANIMAL_OTHER", "LIVESTOCK", "DOMESTIC_ANIMAL", "DEBRIS",
+  "STALLED_VEHICLE", "ACCIDENT", "CARCASS", "ANIMAL_DEBRIS", "ACCIDENT_BLOCKING", "EMERGENCY_RESPONSE", "FOG",
+  "SNOW_WHITEOUT", "SMOKE", "DUST", "HEAVY_RAIN"]);
+
 // Exact codes only, as the Android LaneScope table: a guessed type is never lane-scoped. The stored
 // heading is already the damaged lane's direction (flipped 180 at report time for DAMAGE_ONCOMING).
 const LANE_SCOPED_DAMAGE = new Set(["DAMAGE_MY_LANE", "DAMAGE_ONCOMING"]);
@@ -173,8 +184,10 @@ function featureForRow(row) {
   if (!isFiniteCoordinate(latitude, 90) || !isFiniteCoordinate(longitude, 180)) return null;
 
   const hazardType = displayValue(row.hazard_type) || "OTHER_HAZARD";
-  const category = categoryByType[typeForCode(hazardType)];
+  const type = typeForCode(hazardType);
+  const category = categoryByType[type];
   const title = hazardTitle(row);
+  const code = hazardType.toUpperCase();
 
   return {
     type: "Feature",
@@ -191,6 +204,9 @@ function featureForRow(row) {
       category_label: categoryLabels[category],
       category_color: categoryColors[category],
       hazard_type: hazardType,
+      // AlertWording.descriptor: the report's own specific when it names only the hazard, else the type's noun.
+      descriptor: type === "DELAY" ? typeLabels.DELAY : reportName(row.specific) || spokenLabels[type],
+      speaks_age: SPEAKS_AGE.has(code),
       created_at: displayValue(row.created_at),
       confirmation_count: Number(row.confirmation_count) || 0,
       delay_transit_s: Number(row.delay_transit_s) || 0,
@@ -223,36 +239,8 @@ function formatElapsed(milliseconds) {
   return `${Math.floor(minutes / 60)} h ${minutes % 60} min ago`;
 }
 
-function escapeHtml(value) {
-  return value.replace(/[&<>"']/g, (character) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  })[character]);
-}
-
-function popupContent(properties, now) {
-  const lines = [
-    `<p>${escapeHtml(formatHazardAge(properties.created_at, now))}</p>`,
-  ];
-  if (properties.confirmation_count > 0) {
-    lines.push(`<p>${properties.confirmation_count} confirmations</p>`);
-  }
-  if (properties.category === "DELAY" && properties.delay_transit_s > 0) {
-    const minutes = Math.ceil(properties.delay_transit_s / 60);
-    lines.push(`<p>At least ${minutes} min</p>`);
-  }
-
-  return `<article class="hazard-popup"><h2>${escapeHtml(properties.title)}</h2><p class="hazard-popup-category">${escapeHtml(properties.category_label)}</p>${lines.join("")}</article>`;
-}
-
 export function openHazardPopup(map, properties, coordinate) {
-  return new maplibregl.Popup({ closeButton: true, maxWidth: "300px" })
-    .setLngLat(coordinate)
-    .setHTML(popupContent(properties, Date.now()))
-    .addTo(map);
+  return openHazardCard(map, properties, coordinate);
 }
 
 export function startHazardLayer(map, { onHazardsUpdate = () => {} } = {}) {
@@ -378,5 +366,5 @@ export function startHazardLayer(map, { onHazardsUpdate = () => {} } = {}) {
   refresh();
   window.setInterval(refresh, REFRESH_INTERVAL_MS);
   window.setInterval(() => updateLayer(Date.now()), 1000);
-  return { refresh };
+  return { refresh, lastSuccessAt: () => lastSuccessfulAt };
 }

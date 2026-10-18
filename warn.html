@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en" data-app-name="WARN Drive">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#171b1d">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="WARN Drive">
+    <title>WARN Drive</title>
+    <link rel="manifest" href="./warn.webmanifest">
+    <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
+    <link rel="stylesheet" href="./vendor/maplibre-gl.css">
+    <link rel="stylesheet" href="./css/app.css">
+    <script src="./vendor/pmtiles.js"></script>
+    <script type="module" src="./js/app.js"></script>
+  </head>
+  <body>
+    <main id="map" aria-label="Map"></main>
+    <div class="status-stack">
+      <div id="hazard-status" class="hazard-status" role="status" aria-live="polite">
+        <span id="hazard-summary">Loading hazards</span>
+        <span id="route-status"></span>
+        <span id="route-hint" hidden>Tap and hold the map to route here.</span>
+        <span id="wake-status">screen may sleep</span>
+        <span id="location-status" hidden></span>
+      </div>
+      <div id="alert-cards" class="alert-cards" aria-live="assertive"></div>
+      <nav id="route-bar" class="route-bar" aria-label="Route">
+        <button id="slot-start" class="route-slot" type="button" aria-pressed="false" aria-label="Start: My location">
+          <span class="route-slot-label">Start</span>
+          <span class="route-slot-value">My location</span>
+        </button>
+        <button id="slot-stops" class="route-slot" type="button" aria-pressed="false" aria-label="Stops: none">
+          <span class="route-slot-label">Stops</span>
+          <span class="route-slot-value">none</span>
+        </button>
+        <button id="slot-destination" class="route-slot" type="button" aria-pressed="false" aria-label="Destination: tap to set">
+          <span class="route-slot-label">Destination</span>
+          <span class="route-slot-value">tap to set</span>
+        </button>
+      </nav>
+      <section id="address-sheet" class="address-sheet" aria-labelledby="address-sheet-title" hidden>
+        <div class="address-sheet-header">
+          <h2 id="address-sheet-title">Set destination</h2>
+          <button id="address-sheet-close" type="button" aria-label="Close">×</button>
+        </div>
+        <input id="address-input" type="search" placeholder="Type an address" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" aria-label="Type an address" aria-controls="address-suggestions">
+        <div id="address-suggestions" class="address-suggestions" aria-label="Address suggestions"></div>
+        <p id="address-sheet-status" class="address-sheet-status" role="status"></p>
+        <div class="address-sheet-actions">
+          <button id="address-tap-map" type="button">or tap the map</button>
+          <button id="address-use-location" type="button" hidden>Use my location</button>
+        </div>
+      </section>
+      <div id="pick-banner" class="pick-banner" hidden>
+        <span id="pick-banner-text" role="status"></span>
+        <button id="pick-cancel" type="button">Cancel</button>
+      </div>
+      <section id="route-hazards-panel" class="route-hazards-panel" aria-label="Route plan and hazards" hidden>
+        <button id="route-hazards-toggle" class="route-hazards-toggle" type="button" aria-expanded="true" aria-controls="route-panel-body">
+          <span id="route-hazards-title"></span>
+          <span class="route-hazards-chevron" aria-hidden="true"></span>
+        </button>
+        <div id="route-panel-body" class="route-panel-body">
+          <div id="route-plan" class="route-plan"></div>
+          <div id="route-hazards-list" class="route-hazards-list" role="list"></div>
+        </div>
+      </section>
+    </div>
+    <div class="map-controls">
+      <div id="settings-panel" class="settings-panel" hidden>
+        <fieldset id="route-preference" class="route-preference">
+          <legend>Route by</legend>
+          <label><input type="radio" name="route-preference" value="fastest"> Fastest</label>
+          <label><input type="radio" name="route-preference" value="main"> Main roads</label>
+          <label><input type="radio" name="route-preference" value="shortest"> Shortest</label>
+        </fieldset>
+        <section class="about-card" aria-labelledby="about-title">
+          <h2 id="about-title">About WARN Drive</h2>
+          <p id="app-version-line">Version <span id="app-version">–</span></p>
+          <p>© 2026 Keen Eye Apps</p>
+          <p class="about-notice">Required Notice: Copyright 2026 Keen Eye Apps (https://keeneyeapps.github.io). Licensed under PolyForm Noncommercial 1.0.0.</p>
+          <p class="about-notice">Moose artwork © Luna Montgomery. All rights reserved; used by permission.</p>
+          <h3>Why there's a map</h3>
+          <p class="about-why">WARN is a warning system, not a navigation app. On Android it runs as an overlay on top of whatever you're already using and never needs the screen to itself. iOS doesn't allow that: an app can only warn you while it's open and in front. So on iPhone, WARN has to be the thing on screen, and since it's there anyway, it shows you the map. The map is the price of working on Apple's terms. The warnings are still the point.</p>
+          <p class="about-links">
+            <a href="https://keeneyeapps.github.io/warn/privacy.html" target="_blank" rel="noopener">Privacy</a>
+            <a href="https://keeneyeapps.github.io/warn/licence.html" target="_blank" rel="noopener">Licence</a>
+          </p>
+        </section>
+      </div>
+      <button id="settings-toggle" type="button" aria-label="Settings" aria-expanded="false" aria-controls="settings-panel">
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7 7 0 0 0-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84a.48.48 0 0 0-.47.41l-.36 2.54a7.4 7.4 0 0 0-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87a.47.47 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54a7 7 0 0 0 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.47.47 0 0 0-.12-.61l-2.01-1.58zM12 15.6a3.6 3.6 0 1 1 0-7.2 3.6 3.6 0 0 1 0 7.2z"/></svg>
+      </button>
+      <div id="route-menu" class="route-menu" role="group" aria-label="Selected point" hidden>
+        <button id="route-to-here" type="button">Route to here</button>
+        <button id="start-here" type="button">Start here</button>
+        <button id="add-stop" type="button">Add stop</button>
+      </div>
+      <button id="clear-route" type="button" hidden>Clear route</button>
+      <button id="locate" type="button" aria-pressed="false">Locate me</button>
+    </div>
+  </body>
+</html>

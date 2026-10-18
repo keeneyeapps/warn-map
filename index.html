@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-app-name="WARN Map">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -26,6 +26,7 @@
         <span id="wake-status">screen may sleep</span>
         <span id="location-status" hidden></span>
       </div>
+      <div id="alert-cards" class="alert-cards" aria-live="assertive"></div>
       <nav id="route-bar" class="route-bar" aria-label="Route">
         <button id="slot-start" class="route-slot" type="button" aria-pressed="false" aria-label="Start: My location">
           <span class="route-slot-label">Start</span>
@@ -82,6 +83,8 @@
           <p>© 2026 Keen Eye Apps</p>
           <p class="about-notice">Required Notice: Copyright 2026 Keen Eye Apps (https://keeneyeapps.github.io). Licensed under PolyForm Noncommercial 1.0.0.</p>
           <p class="about-notice">Moose artwork © Luna Montgomery. All rights reserved; used by permission.</p>
+          <h3>Why there's a map</h3>
+          <p class="about-why">WARN is a warning system, not a navigation app. On Android it runs as an overlay on top of whatever you're already using and never needs the screen to itself. iOS doesn't allow that: an app can only warn you while it's open and in front. So on iPhone, WARN has to be the thing on screen, and since it's there anyway, it shows you the map. The map is the price of working on Apple's terms. The warnings are still the point.</p>
           <p class="about-links">
             <a href="https://keeneyeapps.github.io/warn/privacy.html" target="_blank" rel="noopener">Privacy</a>
             <a href="https://keeneyeapps.github.io/warn/licence.html" target="_blank" rel="noopener">Licence</a>

@@ -11,6 +11,25 @@
 - `places_overrides` in region.json may set a place's phone or point; each entry carries a `source` note, and a phone must come from the business's or facility's own public listing.
 - Phone numbers in the places index come only from public business and facility records (OSM business/facility tags and Borough facility layers), never from residential or address data. A phone is shown only as a tap-to-call link for a place the person chose; nothing dials or sends on its own.
 
+## Pages and modules
+
+<!--
+WHICH PAGE MAY LOAD WHICH MODULES. Both pages share one shell (keep their markup identical apart from title,
+data-app-name, manifest, and About heading), one service worker, and one module graph rooted at js/app.js.
+
+  index.html  WARN Map    read-only forever. Loads js/app.js and only what it imports: config, region, map,
+                          hazards (SELECT on public_hazards only), cards, alerts, routing, routing-worker,
+                          route-hazards, addresses, driver (localStorage only), print. It must NEVER load
+                          js/report.js or any module that writes to the WARN database, directly or indirectly.
+  warn.html   WARN Drive  everything index.html loads, plus (in a later step) js/report.js, the ONLY module that
+                          may write. report.js is an empty placeholder until then and no shared module may import it.
+
+"Writes" means anything sent to a server other than the read-only hazard SELECT. localStorage on the device is
+not a write in this sense. A new shared module must not import report.js; anything that writes goes in report.js.
+-->
+
+- `index.html` (WARN Map) and `warn.html` (WARN Drive) load the same shared modules; only `warn.html` may ever load `js/report.js`, and `index.html` must never load anything that writes.
+
 ## Layout
 
 - `index.html`: full-viewport map document.
@@ -19,7 +38,11 @@
 - `js/config.js`: public Supabase project URL, anon key, and `REGION_FILE` (which region pack to load).
 - `js/region.js`: loads the region pack at startup; other modules take paths, bbox, and start view from it.
 - `js/addresses.js`: typed-address and named-place matching over the on-device address and places indexes (never queried over the network).
-- `js/hazards.js`: read-only hazard polling, GeoJSON layers, and popups.
+- `warn.html` / `warn.webmanifest`: WARN Drive, the same shell as `index.html` under its own name and manifest.
+- `js/hazards.js`: read-only hazard polling and GeoJSON layers; its popups are hazard cards.
+- `js/cards.js`: hazard cards after the Android card (colour band, name, distance, age, confirmations; a disabled row for the three action buttons).
+- `js/alerts.js`: spoken alerts while following (cone, 0.5 mi, once per 20 min, mute); wording after Android's AlertWording and SpokenAgePolicy.
+- `js/report.js`: placeholder for WARN Drive reporting; the only module that may ever write, loaded by `warn.html` only.
 - `js/print.js`: route printing; captures the map canvas at print time and builds the print-only sheet (`@media print` in `css/app.css`).
 - `js/driver.js`: driver tools (tariff, planner fare, trip meter, saved trips). Hidden unless driver mode is on (`?driver` once, or 7 taps on the About version line); with it off, no fare, tariff, or trip UI may exist in the DOM. Tariff and trip data stay in localStorage only.
 - `js/map.js`: MapLibre, PMTiles, local theme assets, and map setup.
