@@ -7,6 +7,15 @@ let MIN_LAT;
 let MAX_LON;
 let MAX_LAT;
 const GRID_CELL_DEGREES = 0.025;
+// Route preferences: "shortest" minimises distance; "fastest" minimises estimated time (maxspeed, else the
+// class default); "main" is fastest with minor roads costing MINOR_ROAD_FACTOR times as much, so arterials win
+// unless there is no other way.
+const PREFERENCES = new Set(["shortest", "fastest", "main"]);
+const MINOR_ROAD_FACTOR = 3;
+const MINOR_ROAD_CLASSES = new Set([
+  "residential", "residential_link", "service", "service_link", "track", "track_link", "living_street",
+  "living_street_link",
+]);
 const NO_INDEX = 0xffffffff;
 const DEFAULT_SPEED_KPH = [
   100, 65, 80, 55, 65, 45, 55, 40, 45, 35,
@@ -460,7 +469,28 @@ function blockEdgesForPoints(blockedPoints, state) {
   return { blockedEdges, blockedPointsAffected: [...affected] };
 }
 
-function computeRoute(startPoint, endPoint, state, blockedPoints = []) {
+// Cost per metre of each edge for a preference, built once per preference.
+function edgeCostPerMeter(state, preference) {
+  state.costTables ??= new Map();
+  if (!state.costTables.has(preference)) {
+    const edgeCount = state.edgeLength.length;
+    const table = new Float64Array(edgeCount);
+    const minor = state.classes.map((name) => MINOR_ROAD_CLASSES.has(name));
+    for (let index = 0; index < edgeCount; index += 1) {
+      if (preference === "shortest") {
+        table[index] = 1;
+      } else {
+        table[index] = (1 / state.edgeSpeed[index])
+          * (preference === "main" && minor[state.edgeClass[index]] ? MINOR_ROAD_FACTOR : 1);
+      }
+    }
+    state.costTables.set(preference, table);
+  }
+  return state.costTables.get(preference);
+}
+
+function computeRoute(startPoint, endPoint, state, blockedPoints = [], preference = "shortest") {
+  const costPerM = edgeCostPerMeter(state, PREFERENCES.has(preference) ? preference : "shortest");
   const { blockedEdges, blockedPointsAffected } = blockEdgesForPoints(blockedPoints, state);
   const startSnap = snapToNearestEdge(startPoint, state);
   const endSnap = snapToNearestEdge(endPoint, state);
@@ -492,10 +522,11 @@ function computeRoute(startPoint, endPoint, state, blockedPoints = []) {
 
   let best = null;
   if (startEdge === endEdge && !blockedEdges[startEdge]) {
+    const directCost = Math.abs(endAlong - startAlong) * costPerM[startEdge];
     if (endAlong >= startAlong && canTravelForward(startEdge, state)) {
-      best = { distanceM: endAlong - startAlong, direct: { edgeIndex: startEdge, fromM: startAlong, toM: endAlong } };
+      best = { cost: directCost, direct: { edgeIndex: startEdge, fromM: startAlong, toM: endAlong } };
     } else if (endAlong < startAlong && canTravelReverse(startEdge, state)) {
-      best = { distanceM: startAlong - endAlong, direct: { edgeIndex: startEdge, fromM: startAlong, toM: endAlong } };
+      best = { cost: directCost, direct: { edgeIndex: startEdge, fromM: startAlong, toM: endAlong } };
     }
   }
 
@@ -511,7 +542,7 @@ function computeRoute(startPoint, endPoint, state, blockedPoints = []) {
   const heap = { nodes: [], distances: [] };
   for (let optionIndex = 0; optionIndex < startOptions.length; optionIndex += 1) {
     const option = startOptions[optionIndex];
-    const cost = Math.abs(option.toM - option.fromM);
+    const cost = Math.abs(option.toM - option.fromM) * costPerM[startEdge];
     if (cost < distances[option.node]) {
       distances[option.node] = cost;
       roots[option.node] = optionIndex;
@@ -522,13 +553,13 @@ function computeRoute(startPoint, endPoint, state, blockedPoints = []) {
   while (heap.nodes.length > 0) {
     const [distance, node] = heapPop(heap);
     if (distance !== distances[node]) continue;
-    if (best && distance >= best.distanceM) break;
+    if (best && distance >= best.cost) break;
 
     for (const finish of finishOptions) {
       if (finish.node !== node) continue;
-      const totalDistance = distance + Math.abs(finish.toM - finish.fromM);
-      if (!best || totalDistance < best.distanceM) {
-        best = { distanceM: totalDistance, endNode: node, finish };
+      const totalCost = distance + Math.abs(finish.toM - finish.fromM) * costPerM[endEdge];
+      if (!best || totalCost < best.cost) {
+        best = { cost: totalCost, endNode: node, finish };
       }
     }
 
@@ -538,8 +569,8 @@ function computeRoute(startPoint, endPoint, state, blockedPoints = []) {
       const neighbor = state.adjacencyNeighbors[adjacencyIndex];
       const edgeIndex = state.adjacencyEdges[adjacencyIndex];
       if (blockedEdges[edgeIndex]) continue;
-      const candidate = distance + state.edgeLength[edgeIndex];
-      if (candidate < distances[neighbor] && (!best || candidate < best.distanceM)) {
+      const candidate = distance + state.edgeLength[edgeIndex] * costPerM[edgeIndex];
+      if (candidate < distances[neighbor] && (!best || candidate < best.cost)) {
         distances[neighbor] = candidate;
         parentNodes[neighbor] = node;
         parentEdges[neighbor] = edgeIndex;
@@ -625,7 +656,7 @@ function computeRoute(startPoint, endPoint, state, blockedPoints = []) {
 }
 
 self.addEventListener("message", async (event) => {
-  const { type, requestId, start, destination, blockedPoints: requestedBlockedPoints } = event.data || {};
+  const { type, requestId, start, destination, blockedPoints: requestedBlockedPoints, preference } = event.data || {};
   if (type === "configure") {
     graphUrl = event.data.graphUrl;
     [MIN_LON, MIN_LAT, MAX_LON, MAX_LAT] = event.data.bbox;
@@ -647,7 +678,7 @@ self.addEventListener("message", async (event) => {
         return [{ id: blocked.id ?? index, point, radiusM }];
       })
       : [];
-    const result = computeRoute(start, destination, state, blockedPoints);
+    const result = computeRoute(start, destination, state, blockedPoints, preference);
     self.postMessage({
       type: "route-result",
       requestId,

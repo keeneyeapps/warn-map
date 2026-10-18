@@ -11,6 +11,9 @@ const CASING_LAYER_ID = "computed-route-casing";
 const LINE_LAYER_ID = "computed-route-line";
 const HINT_KEY = "warn-map-route-hint-dismissed";
 const FARE_RATE_KEY = "warn-map-fare-rate";
+const ROUTE_PREFERENCE_KEY = "warn-map-route-preference";
+const ROUTE_PREFERENCES = { fastest: "Fastest", main: "Main roads", shortest: "Shortest" };
+const DEFAULT_ROUTE_PREFERENCE = "fastest";
 const METERS_PER_MILE = 1609.344;
 const SHEET_TITLES = {
   start: "Set start",
@@ -169,6 +172,8 @@ export function setupRouting(map, {
   const settingsToggle = document.querySelector("#settings-toggle");
   const settingsPanel = document.querySelector("#settings-panel");
   const fareRateInput = document.querySelector("#fare-rate");
+  const preferenceInputs = [...document.querySelectorAll('input[name="route-preference"]')];
+  const appVersion = document.querySelector("#app-version");
   const slotStart = document.querySelector("#slot-start");
   const slotStops = document.querySelector("#slot-stops");
   const slotDestination = document.querySelector("#slot-destination");
@@ -215,6 +220,7 @@ export function setupRouting(map, {
   let dragState = null;
   let planRenderPending = false;
   let fareRateText = "";
+  let routePreference = DEFAULT_ROUTE_PREFERENCE;
   let activeRoute = null;
   let routeStartPoint = null;
   let baseRouteDistanceM = 0;
@@ -304,6 +310,14 @@ export function setupRouting(map, {
     fareRateText = "";
   }
   fareRateInput.value = fareRateText;
+
+  try {
+    const stored = localStorage.getItem(ROUTE_PREFERENCE_KEY);
+    if (stored in ROUTE_PREFERENCES) routePreference = stored;
+  } catch {
+    // Storage unavailable: the default preference applies for this page.
+  }
+  for (const input of preferenceInputs) input.checked = input.value === routePreference;
 
   function fareRate() {
     const rate = Number.parseFloat(fareRateText);
@@ -395,12 +409,21 @@ export function setupRouting(map, {
 
   // When a place popup opens where the route panel would cover it (or its marker), fold the panel to its header,
   // and unfold it again when that popup closes unless the panel was toggled meanwhile.
+  // A popup opened while the camera is still moving (fitting a new route) is checked again where it settles.
   function uncoverPopup(popup, anchorElement = null) {
-    if (hazardsPanel.hidden || panelBody.hidden) return;
+    if (!foldPanelIfCovering(popup, anchorElement) && map.isMoving()) {
+      map.once("moveend", () => {
+        if (popup.isOpen()) foldPanelIfCovering(popup, anchorElement);
+      });
+    }
+  }
+
+  function foldPanelIfCovering(popup, anchorElement) {
+    if (hazardsPanel.hidden || panelBody.hidden) return false;
     const panelRect = hazardsPanel.getBoundingClientRect();
     const covered = [popup.getElement(), anchorElement]
       .some((element) => element && rectsOverlap(element.getBoundingClientRect(), panelRect));
-    if (!covered) return;
+    if (!covered) return false;
     collapsePanel();
     popup.once("close", () => {
       if (!hazardsPanel.hidden && panelBody.hidden && hazardsToggle.getAttribute("aria-expanded") === "false"
@@ -410,6 +433,7 @@ export function setupRouting(map, {
       }
     });
     panelToggledSince = false;
+    return true;
   }
 
   let panelToggledSince = false;
@@ -872,7 +896,10 @@ export function setupRouting(map, {
       const totalText = document.createElement("span");
       totalText.className = "route-total-distance";
       totalText.textContent = `Total ${formatTenths(totalTenths)} · ${formatMinutes(activeRoute.estimatedTimeSeconds)}`;
-      total.append(totalText);
+      const preferenceText = document.createElement("span");
+      preferenceText.className = "route-preference-in-use";
+      preferenceText.textContent = `${ROUTE_PREFERENCES[routePreference]} route`;
+      total.append(totalText, preferenceText);
       const fare = fareText(totalTenths);
       if (fare) {
         const fareElement = document.createElement("span");
@@ -1016,7 +1043,9 @@ export function setupRouting(map, {
     const id = ++requestId;
     return new Promise((resolve, reject) => {
       pendingRequests.set(id, { resolve, reject });
-      worker.postMessage({ type: "route", requestId: id, start, destination: end, blockedPoints });
+      worker.postMessage({
+        type: "route", requestId: id, start, destination: end, blockedPoints, preference: routePreference,
+      });
     });
   }
 
@@ -1404,12 +1433,41 @@ export function setupRouting(map, {
     panelBody.hidden = expanded;
   });
 
+  // The version shown in About is the service worker's cache version (warn-map-shell-vN), so it has one source.
+  async function showAppVersion() {
+    try {
+      const versions = (await caches.keys())
+        .map((name) => /^warn-map-shell-v(\d+)$/.exec(name)?.[1])
+        .filter(Boolean)
+        .map(Number);
+      appVersion.textContent = versions.length > 0 ? String(Math.max(...versions)) : "not installed yet";
+    } catch {
+      appVersion.textContent = "unknown";
+    }
+  }
+
   settingsToggle.addEventListener("click", () => {
     const open = settingsPanel.hidden;
     settingsPanel.hidden = !open;
     settingsToggle.setAttribute("aria-expanded", String(open));
-    if (open) fareRateInput.focus();
+    if (open) {
+      showAppVersion();
+      fareRateInput.focus();
+    }
   });
+
+  for (const input of preferenceInputs) {
+    input.addEventListener("change", () => {
+      if (!input.checked || !(input.value in ROUTE_PREFERENCES)) return;
+      routePreference = input.value;
+      try {
+        localStorage.setItem(ROUTE_PREFERENCE_KEY, routePreference);
+      } catch {
+        // The preference still applies for this page if storage is unavailable.
+      }
+      if (destinationPoint) planChanged();
+    });
+  }
 
   fareRateInput.addEventListener("input", () => {
     fareRateText = fareRateInput.value.trim();

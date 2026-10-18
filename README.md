@@ -2,6 +2,12 @@ WARN Map is a public, read-only PWA for viewing current WARN road hazards on a m
 
 The app is read-only and may only query the WARN Supabase `public_hazards` view using its anon key. Browser geolocation never leaves the device; used only by the map and on-device routing. All runtime assets and tiles are self-hosted, there are no CDNs, and there is no build step.
 
+## Licence
+
+Required Notice: Copyright 2026 Keen Eye Apps (https://keeneyeapps.github.io). Licensed under PolyForm Noncommercial 1.0.0.
+
+The code is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE), the same licence as the WARN Android app. The moose-head artwork is excluded (see Icon below), and the data files keep their own terms (see `LICENSE` and the sections below).
+
 ## Region pack
 
 Everything region-specific lives in `regions/<id>/region.json`, and `js/config.js` names the one region file the app loads (`REGION_FILE`). The region file holds the id and display name, the bbox, the start view, the data files (basemap tiles, road graph, address index, and named-places index) with their source URLs and licence notes, the address source's field mapping, the `region_code` the WARN database uses for the area, and the expected wildlife. The code reads paths, bbox, and start view from it, and the service worker builds its data precache list from it. Data paths in `region.json` are relative to the repository root.
@@ -11,6 +17,10 @@ The `hazards.region_code` entry is informational. The app shows every row of `pu
 ## Basemap tiles
 
 `tiles/kenai.pmtiles` is an extract of a Protomaps daily basemap build (OpenStreetMap, ODbL; Natural Earth). To rebuild it, put the [pmtiles CLI](https://github.com/protomaps/go-pmtiles/releases) on your PATH or at `tools/pmtiles.exe`, set `files.tiles.source.url` to a current build from <https://maps.protomaps.com/builds/>, then run `python tools/build_tiles.py --region regions/kenai/region.json`. It extracts the region's bbox up to `files.tiles.maxzoom`; add `--dry-run` to see the tile count without downloading.
+
+## Route preference
+
+Behind the gear, "Route by" chooses how the on-device router weighs roads: Fastest (the default) minimises the estimated time from each road's `maxspeed`, or a default speed for its class; Main roads is Fastest with residential, service, track, and living-street roads counted three times as costly, so arterials win unless there is no other way; Shortest minimises distance. The choice is stored in the browser and the route panel names the one in use.
 
 ## Road graph
 
