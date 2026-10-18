@@ -1,9 +1,11 @@
 const EARTH_RADIUS_M = 6_371_008.8;
 const METERS_PER_DEGREE = 111_320;
-const MIN_LON = -154.8;
-const MIN_LAT = 58.9;
-const MAX_LON = -148.2;
-const MAX_LAT = 61.6;
+// Set by the "configure" message from the region pack before any route request.
+let graphUrl = null;
+let MIN_LON;
+let MIN_LAT;
+let MAX_LON;
+let MAX_LAT;
 const GRID_CELL_DEGREES = 0.025;
 const NO_INDEX = 0xffffffff;
 const DEFAULT_SPEED_KPH = [
@@ -214,7 +216,7 @@ function buildGraph(graph) {
 async function ensureGraph() {
   if (!graphPromise) {
     const loadStart = performance.now();
-    graphPromise = fetch(new URL("../graph/kenai-roads.json", import.meta.url))
+    graphPromise = fetch(graphUrl)
       .then(async (response) => {
         if (!response.ok) throw new Error(`Road graph request failed (${response.status})`);
         const contentLength = response.headers.get("content-length");
@@ -624,6 +626,11 @@ function computeRoute(startPoint, endPoint, state, blockedPoints = []) {
 
 self.addEventListener("message", async (event) => {
   const { type, requestId, start, destination, blockedPoints: requestedBlockedPoints } = event.data || {};
+  if (type === "configure") {
+    graphUrl = event.data.graphUrl;
+    [MIN_LON, MIN_LAT, MAX_LON, MAX_LAT] = event.data.bbox;
+    return;
+  }
   if (type !== "route") return;
 
   try {

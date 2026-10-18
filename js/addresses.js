@@ -1,7 +1,9 @@
-// Typed-address lookup over the on-device index (addresses/kenai-addresses.json). The index is a static file
+// Typed-address lookup over the on-device index (the region pack's addresses file). The index is a static file
 // served with the app and precached by the service worker; nothing here sends a query anywhere.
 
-const INDEX_URL = new URL("../addresses/kenai-addresses.json", import.meta.url);
+import { regionFileUrl } from "./region.js";
+
+const INDEX_URL = regionFileUrl("addresses");
 const MAX_SUGGESTIONS = 8;
 const NEAREST_NUMBERS_PER_STREET = 2;
 const METERS_PER_DEGREE = 111_320;
@@ -82,7 +84,7 @@ function parseQuery(text, index) {
     tokens = tokens.slice(1);
     if (tokens.length > 0 && /^\d+\/\d+$/.test(tokens[0])) tokens = tokens.slice(1);
   }
-  // Without a comma, trailing words that spell a place name are the city ("main st kenai").
+  // Without a comma, trailing words that spell a place name are the city ("main st springfield").
   if (cityTokens.length === 0) {
     for (let count = Math.min(3, tokens.length - 1); count >= 1; count -= 1) {
       if (index.placeNames.has(tokens.slice(-count).join(" "))) {

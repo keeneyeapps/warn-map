@@ -10,13 +10,10 @@ from collections import defaultdict
 from datetime import date
 from pathlib import Path
 
-# KPB Physical Addresses (Kenai Peninsula Borough E911 address points, KPB GeoHub item
-# 03f1d7cbe70244c7bf3cba92a4cee5e1). Served in NAD83 Alaska State Plane 4 (ft); requested as WGS84.
-SERVICE_URL = (
-    "https://services.arcgis.com/ba4DH9pIcqkXJVfl/arcgis/rest/services/"
-    "Physical_Addresses_view/FeatureServer/0/query"
-)
-PAGE_SIZE = 2000
+from region import load_region, root_path
+
+# The address source, its field names, and the output path all come from the region pack
+# (files.addresses in region.json). Points are requested from the ArcGIS feature service as WGS84.
 EARTH_RADIUS_M = 6_371_008.8
 METERS_PER_DEGREE = 111_320
 GRID_CELL_DEGREES = 0.002
@@ -30,7 +27,9 @@ LOWERCASE_WORDS = {"of", "the", "and", "on", "at"}
 ROMAN_NUMERALS = {"II", "III", "IV", "VI", "VII", "VIII"}
 
 
-def fetch(output):
+def fetch(source, output):
+    if source["type"] != "arcgis-feature-service":
+        raise SystemExit(f"Unsupported address source type: {source['type']}")
     features = []
     offset = 0
     while True:
@@ -38,19 +37,19 @@ def fetch(output):
             "where": "1=1",
             "outFields": "*",
             "outSR": 4326,
-            "orderByFields": "OBJECTID",
+            "orderByFields": source["order_by"],
             "resultOffset": offset,
-            "resultRecordCount": PAGE_SIZE,
+            "resultRecordCount": source["page_size"],
             "f": "geojson",
         })
-        with urllib.request.urlopen(f"{SERVICE_URL}?{query}", timeout=120) as response:
+        with urllib.request.urlopen(f"{source['url']}?{query}", timeout=120) as response:
             page = json.load(response)
         batch = page.get("features", [])
         features.extend(batch)
         print(f"Fetched {len(features):,} records")
-        if len(batch) < PAGE_SIZE:
+        if len(batch) < source["page_size"]:
             break
-        offset += PAGE_SIZE
+        offset += source["page_size"]
         time.sleep(0.5)
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", encoding="utf-8", newline="\n") as handle:
@@ -88,7 +87,7 @@ def normalise_place(name):
 
 
 def split_address(address, number, unit):
-    """Street name and any house-number fraction from KPB's one-line Address string."""
+    """Street name and any house-number fraction from a one-line address string ("123 1/2 Main St")."""
     address = re.sub(r"\s+", " ", address or "").strip()
     # 661 records repeat their unit ("... Way Bldg 2"); it belongs in the unit field only.
     if unit and address.casefold().endswith(" " + unit.casefold()):
@@ -99,40 +98,40 @@ def split_address(address, number, unit):
     return address, ""
 
 
-def build(source, output):
+def build(source, output, fields, source_name):
     features = json.loads(source.read_text(encoding="utf-8"))["features"]
     kept = {}
     dropped = defaultdict(int)
     for feature in features:
         properties = feature.get("properties") or {}
         geometry = feature.get("geometry") or {}
-        if geometry.get("type") != "Point":
+        if geometry.get("type") != fields["geometry"]:
             dropped["no point geometry"] += 1
             continue
         longitude, latitude = geometry["coordinates"][:2]
         if not (math.isfinite(longitude) and math.isfinite(latitude)):
             dropped["no point geometry"] += 1
             continue
-        number = properties.get("House_Number")
+        number = properties.get(fields["number"])
         if not isinstance(number, int) or number <= 0:
             dropped["no house number"] += 1
             continue
-        unit = " ".join(
-            part for part in (normalise_place(properties.get("unittype")), (properties.get("unitid") or "").strip())
-            if part
-        )
-        raw_unit = " ".join(
-            part for part in ((properties.get("unittype") or "").strip(), (properties.get("unitid") or "").strip()) if part
-        )
-        street, fraction = split_address(properties.get("Address"), number, raw_unit)
+        unit_type = properties.get(fields["unit_type"])
+        unit_id = (properties.get(fields["unit_id"]) or "").strip()
+        unit = " ".join(part for part in (normalise_place(unit_type), unit_id) if part)
+        raw_unit = " ".join(part for part in ((unit_type or "").strip(), unit_id) if part)
+        if fields["street_includes_number"]:
+            street, fraction = split_address(properties.get(fields["street"]), number, raw_unit)
+        else:
+            street, fraction = properties.get(fields["street"]) or "", ""
         street = normalise_street(street)
         if not street:
             dropped["no street name"] += 1
             continue
         unit = " ".join(part for part in (fraction, unit) if part)
         # The postal city is what people write; the dispatch (MSAG) community is kept so it matches too.
-        community = normalise_place(properties.get("Community_Name"))
-        city = normalise_place(properties.get("PO_Community_Name")) or community
+        community = normalise_place(properties.get(fields["dispatch_community"]))
+        city = normalise_place(properties.get(fields["postal_city"])) or community
         key = (street.casefold(), number, unit.casefold(), city.casefold())
         if key in kept:
             dropped["duplicate"] += 1
@@ -161,7 +160,7 @@ def build(source, output):
     place_index = {name: index for index, name in enumerate(places)}
 
     result = {
-        "source": "Kenai Peninsula Borough, KPB Physical Addresses (E911 address points)",
+        "source": source_name,
         "built": date.today().isoformat(),
         "fields": ["street", "number", "unit", "city", "community", "lon", "lat"],
         "streets": streets,
@@ -326,19 +325,25 @@ def check_alignment(index_path, graph_path):
 
 
 def main():
-    root = Path(__file__).resolve().parent.parent
-    parser = argparse.ArgumentParser(description="Build the Kenai Peninsula offline address index")
-    parser.add_argument("--input", type=Path, default=root / "tools" / "kpb-physical-addresses.geojson")
-    parser.add_argument("--output", type=Path, default=root / "addresses" / "kenai-addresses.json")
-    parser.add_argument("--graph", type=Path, default=root / "graph" / "kenai-roads.json")
-    parser.add_argument("--fetch", action="store_true", help="download the KPB address points to --input first")
+    parser = argparse.ArgumentParser(description="Build a region's offline address index")
+    parser.add_argument("--region", type=Path, required=True, help="region pack, e.g. regions/kenai/region.json")
+    parser.add_argument("--input", type=Path, help="source GeoJSON (default: the region's addresses download_to)")
+    parser.add_argument("--output", type=Path, help="index JSON (default: the region's addresses path)")
+    parser.add_argument("--graph", type=Path, help="road graph for --check-alignment (default: the region's graph path)")
+    parser.add_argument("--fetch", action="store_true", help="download the region's address points to --input first")
     parser.add_argument("--check-alignment", action="store_true",
                         help="report address-to-road distances against --graph (read-only)")
     args = parser.parse_args()
 
+    region = load_region(args.region)
+    addresses = region["files"]["addresses"]
+    args.input = args.input or root_path(addresses["source"]["download_to"])
+    args.output = args.output or root_path(addresses["path"])
+    args.graph = args.graph or root_path(region["files"]["graph"]["path"])
+
     if args.fetch:
-        fetch(args.input)
-    build(args.input, args.output)
+        fetch(addresses["source"], args.input)
+    build(args.input, args.output, addresses["fields"], addresses["source"]["name"])
     if args.check_alignment:
         check_alignment(args.output, args.graph)
 

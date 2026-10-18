@@ -2,3 +2,5 @@ node_modules/
 tools/*
 !tools/build_graph.py
 !tools/build_addresses.py
+!tools/build_tiles.py
+!tools/region.py

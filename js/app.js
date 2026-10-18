@@ -1,4 +1,5 @@
 import * as maplibregl from "../vendor/maplibre-gl.js";
+import { REGION_FILE } from "./config.js";
 import { startHazardLayer } from "./hazards.js";
 import { createMap } from "./map.js";
 import { setupRouting } from "./routing.js";
@@ -223,7 +224,9 @@ document.addEventListener("visibilitychange", () => {
 requestWakeLock();
 
 if ("serviceWorker" in navigator) {
+  // The worker reads the same region file to know which data files to precache.
   const serviceWorkerUrl = new URL("../sw.js", import.meta.url);
+  serviceWorkerUrl.searchParams.set("region", REGION_FILE);
   const serviceWorkerScope = new URL("../", import.meta.url).pathname;
   navigator.serviceWorker.register(serviceWorkerUrl, { scope: serviceWorkerScope }).catch(() => {});
 }

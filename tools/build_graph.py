@@ -2,13 +2,16 @@ import argparse
 import heapq
 import json
 import math
+import shutil
+import urllib.request
 from collections import defaultdict
 from pathlib import Path
 
 import osmium
 
+from region import load_region, root_path
 
-BBOX = (-154.8, 58.9, -148.2, 61.6)
+
 CLASSES = (
     "motorway",
     "motorway_link",
@@ -35,9 +38,9 @@ CLASS_INDEX = {name: index for index, name in enumerate(CLASSES)}
 EARTH_RADIUS_M = 6_371_008.8
 
 
-def clip_segment(start, end):
-    """Return the segment portion inside BBOX as coordinates and source fractions."""
-    min_lon, min_lat, max_lon, max_lat = BBOX
+def clip_segment(start, end, bbox):
+    """Return the segment portion inside bbox as coordinates and source fractions."""
+    min_lon, min_lat, max_lon, max_lat = bbox
     x0, y0 = start[1]
     x1, y1 = end[1]
     dx = x1 - x0
@@ -71,12 +74,12 @@ def clip_segment(start, end):
     return point_at(lower, start), point_at(upper, start)
 
 
-def way_fragments(way_id, nodes):
+def way_fragments(way_id, nodes, bbox):
     fragments = []
     current = []
 
     for segment_index, (start, end) in enumerate(zip(nodes, nodes[1:])):
-        clipped = clip_segment(start, end)
+        clipped = clip_segment(start, end, bbox)
         if clipped is None:
             if len(current) > 1:
                 fragments.append(current)
@@ -102,8 +105,9 @@ def way_fragments(way_id, nodes):
 
 
 class RoadHandler(osmium.SimpleHandler):
-    def __init__(self):
+    def __init__(self, bbox):
         super().__init__()
+        self.bbox = bbox
         self.ways = []
 
     def way(self, way):
@@ -120,7 +124,7 @@ class RoadHandler(osmium.SimpleHandler):
         if len(nodes) < 2:
             return
 
-        fragments = way_fragments(int(way.id), nodes)
+        fragments = way_fragments(int(way.id), nodes, self.bbox)
         if not fragments:
             return
 
@@ -273,14 +277,29 @@ def build_graph(ways):
     return result, report
 
 
+def fetch(url, output):
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with urllib.request.urlopen(url, timeout=600) as response, output.open("wb") as handle:
+        shutil.copyfileobj(response, handle)
+    print(f"Downloaded {url} to {output} ({output.stat().st_size:,} bytes)")
+
+
 def main():
-    root = Path(__file__).resolve().parent.parent
-    parser = argparse.ArgumentParser(description="Build the Kenai Peninsula offline road graph")
-    parser.add_argument("--input", type=Path, default=root / "tools" / "alaska-latest.osm.pbf")
-    parser.add_argument("--output", type=Path, default=root / "graph" / "kenai-roads.json")
+    parser = argparse.ArgumentParser(description="Build a region's offline road graph from an OSM extract")
+    parser.add_argument("--region", type=Path, required=True, help="region pack, e.g. regions/kenai/region.json")
+    parser.add_argument("--input", type=Path, help="OSM .pbf extract (default: the region's graph download_to)")
+    parser.add_argument("--output", type=Path, help="graph JSON (default: the region's graph path)")
+    parser.add_argument("--fetch", action="store_true", help="download the region's graph source to --input first")
     args = parser.parse_args()
 
-    handler = RoadHandler()
+    region = load_region(args.region)
+    graph_file = region["files"]["graph"]
+    args.input = args.input or root_path(graph_file["source"]["download_to"])
+    args.output = args.output or root_path(graph_file["path"])
+    if args.fetch:
+        fetch(graph_file["source"]["url"], args.input)
+
+    handler = RoadHandler(tuple(region["bbox"]))
     handler.apply_file(str(args.input), locations=True)
     graph, component_report = build_graph(handler.ways)
 

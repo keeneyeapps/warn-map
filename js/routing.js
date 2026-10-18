@@ -2,6 +2,7 @@ import * as maplibregl from "../vendor/maplibre-gl.js";
 import { loadAddressIndex, normaliseTokens, searchAddresses } from "./addresses.js";
 import { formatHazardAge, openHazardPopup } from "./hazards.js";
 import { hazardsAlongRoute } from "./route-hazards.js";
+import { region, regionFileUrl } from "./region.js";
 
 const SOURCE_ID = "computed-route";
 const CASING_LAYER_ID = "computed-route-casing";
@@ -181,6 +182,7 @@ export function setupRouting(map, {
   const addressTapMap = document.querySelector("#address-tap-map");
   const addressUseLocation = document.querySelector("#address-use-location");
   const worker = new Worker(new URL("./routing-worker.js", import.meta.url), { type: "module" });
+  worker.postMessage({ type: "configure", graphUrl: regionFileUrl("graph").href, bbox: region.bbox });
   const pendingRequests = new Map();
   let requestId = 0;
   let workerLoadTimeMs = null;

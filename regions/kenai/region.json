@@ -1,0 +1,64 @@
+{
+  "id": "kenai",
+  "name": "Kenai Peninsula",
+  "bbox": [-154.8, 58.9, -148.2, 61.6],
+  "start": {
+    "center": [-151.06, 60.49],
+    "zoom": 10
+  },
+  "hazards": {
+    "region_code": "KPB",
+    "note": "Informational only: the region_code the WARN database uses for this area. The app shows every row of public_hazards and never filters hazards by region_code or by this bbox."
+  },
+  "files": {
+    "tiles": {
+      "path": "tiles/kenai.pmtiles",
+      "maxzoom": 15,
+      "attribution": "© OpenStreetMap contributors",
+      "source": {
+        "url": "https://build.protomaps.com/20261016.pmtiles",
+        "licence": "Protomaps Basemap built from OpenStreetMap (ODbL) and Natural Earth (public domain). Daily builds are kept for a limited time; pick a current one from https://maps.protomaps.com/builds/ when rebuilding."
+      }
+    },
+    "graph": {
+      "path": "graph/kenai-roads.json",
+      "source": {
+        "url": "https://download.geofabrik.de/north-america/us/alaska-latest.osm.pbf",
+        "download_to": "tools/alaska-latest.osm.pbf",
+        "licence": "OpenStreetMap data, ODbL, via Geofabrik."
+      }
+    },
+    "addresses": {
+      "path": "addresses/kenai-addresses.json",
+      "source": {
+        "name": "Kenai Peninsula Borough, KPB Physical Addresses (E911 address points)",
+        "type": "arcgis-feature-service",
+        "url": "https://services.arcgis.com/ba4DH9pIcqkXJVfl/arcgis/rest/services/Physical_Addresses_view/FeatureServer/0/query",
+        "item": "KPB GeoHub item 03f1d7cbe70244c7bf3cba92a4cee5e1",
+        "order_by": "OBJECTID",
+        "page_size": 2000,
+        "download_to": "tools/kpb-physical-addresses.geojson",
+        "licence": "Provided by the Kenai Peninsula Borough without warranty; the Borough asks users to accept that it assumes no liability for its use. For locating a destination only, not an authoritative address record."
+      },
+      "fields": {
+        "number": "House_Number",
+        "street": "Address",
+        "street_includes_number": true,
+        "unit_type": "unittype",
+        "unit_id": "unitid",
+        "postal_city": "PO_Community_Name",
+        "dispatch_community": "Community_Name",
+        "geometry": "Point"
+      }
+    },
+    "places": {
+      "path": null,
+      "source": null
+    }
+  },
+  "wildlife": {
+    "species": ["moose", "caribou", "bear"],
+    "quick_button": "moose",
+    "button_icon": ""
+  }
+}
