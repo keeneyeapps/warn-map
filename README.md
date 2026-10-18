@@ -22,6 +22,10 @@ The `hazards.region_code` entry is informational. The app shows every row of `pu
 
 Behind the gear, "Route by" chooses how the on-device router weighs roads: Fastest (the default) minimises the estimated time from each road's `maxspeed`, or a default speed for its class; Main roads is Fastest with residential, service, track, and living-street roads counted three times as costly, so arterials win unless there is no other way; Shortest minimises distance. The choice is stored in the browser and the route panel names the one in use.
 
+## Route alternatives
+
+After the chosen route, the router looks for up to two alternatives by searching again with every edge of the routes already found counted 1.6 times as costly. An alternative is kept only if at least 25% of its length is on roads the routes already shown do not use, and it is no more than 40% longer than the best route. Alternatives use the same route preference and avoided closures. They are drawn as thinner dashed lines under the route, each labelled with its distance and minutes; tapping one (or its label) makes it the active route. Hazards along the route, the route panel, share text, and fare always describe the active route.
+
 ## Road graph
 
 `graph/kenai-roads.json` is a compact, offline road network for on-device routing. It is derived from OpenStreetMap data under the ODbL, downloaded from Geofabrik. To rebuild it, install pyosmium with `python -m pip install osmium`, then run `python tools/build_graph.py --region regions/kenai/region.json --fetch`, which downloads the region's extract (`files.graph.source`) to the ignored `tools/` folder and clips it to the bbox. Leave out `--fetch` to reuse an extract already downloaded.

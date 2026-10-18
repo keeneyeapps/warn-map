@@ -12,6 +12,8 @@ const GRID_CELL_DEGREES = 0.025;
 // unless there is no other way.
 const PREFERENCES = new Set(["shortest", "fastest", "main"]);
 const MINOR_ROAD_FACTOR = 3;
+// Alternatives: edges of routes already found cost this many times as much on the next search.
+const ALTERNATIVE_PENALTY = 1.6;
 const MINOR_ROAD_CLASSES = new Set([
   "residential", "residential_link", "service", "service_link", "track", "track_link", "living_street",
   "living_street_link",
@@ -489,8 +491,16 @@ function edgeCostPerMeter(state, preference) {
   return state.costTables.get(preference);
 }
 
-function computeRoute(startPoint, endPoint, state, blockedPoints = [], preference = "shortest") {
-  const costPerM = edgeCostPerMeter(state, PREFERENCES.has(preference) ? preference : "shortest");
+function computeRoute(startPoint, endPoint, state, blockedPoints = [], preference = "shortest", penalizedEdges = []) {
+  let costPerM = edgeCostPerMeter(state, PREFERENCES.has(preference) ? preference : "shortest");
+  if (penalizedEdges.length > 0) {
+    costPerM = Float64Array.from(costPerM);
+    for (const edgeIndex of penalizedEdges) {
+      if (Number.isInteger(edgeIndex) && edgeIndex >= 0 && edgeIndex < costPerM.length) {
+        costPerM[edgeIndex] *= ALTERNATIVE_PENALTY;
+      }
+    }
+  }
   const { blockedEdges, blockedPointsAffected } = blockEdgesForPoints(blockedPoints, state);
   const startSnap = snapToNearestEdge(startPoint, state);
   const endSnap = snapToNearestEdge(endPoint, state);
@@ -656,7 +666,9 @@ function computeRoute(startPoint, endPoint, state, blockedPoints = [], preferenc
 }
 
 self.addEventListener("message", async (event) => {
-  const { type, requestId, start, destination, blockedPoints: requestedBlockedPoints, preference } = event.data || {};
+  const {
+    type, requestId, start, destination, blockedPoints: requestedBlockedPoints, preference, penalizedEdges,
+  } = event.data || {};
   if (type === "configure") {
     graphUrl = event.data.graphUrl;
     [MIN_LON, MIN_LAT, MAX_LON, MAX_LAT] = event.data.bbox;
@@ -678,7 +690,8 @@ self.addEventListener("message", async (event) => {
         return [{ id: blocked.id ?? index, point, radiusM }];
       })
       : [];
-    const result = computeRoute(start, destination, state, blockedPoints, preference);
+    const result = computeRoute(start, destination, state, blockedPoints, preference,
+      Array.isArray(penalizedEdges) ? penalizedEdges : []);
     self.postMessage({
       type: "route-result",
       requestId,

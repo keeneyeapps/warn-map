@@ -9,6 +9,16 @@ const SOURCE_ID = "computed-route";
 const PLACE_TAP_RADIUS_M = 30;
 const CASING_LAYER_ID = "computed-route-casing";
 const LINE_LAYER_ID = "computed-route-line";
+const ALTERNATIVES_SOURCE_ID = "route-alternatives";
+const ALTERNATIVES_LAYER_ID = "route-alternatives-line";
+// Up to two alternatives: each search weights every edge of the routes found so far x1.6 (in the worker); one is
+// kept if at least 25% of its length is on edges not shared with each route already shown, and it is at most 40%
+// longer than the best route. A few extra searches allow for candidates that fail those tests.
+const MAX_ALTERNATIVES = 2;
+const MAX_ALTERNATIVE_SEARCHES = 4;
+const MIN_UNSHARED_SHARE = 0.25;
+const MAX_EXTRA_LENGTH = 0.4;
+const ALTERNATIVE_TAP_PX = 10;
 const HINT_KEY = "warn-map-route-hint-dismissed";
 const FARE_RATE_KEY = "warn-map-fare-rate";
 const ROUTE_PREFERENCE_KEY = "warn-map-route-preference";
@@ -222,6 +232,11 @@ export function setupRouting(map, {
   let fareRateText = "";
   let routePreference = DEFAULT_ROUTE_PREFERENCE;
   let activeRoute = null;
+  // The route options for the current plan: the best route first, then any alternatives found.
+  let routeOptions = [];
+  let activeOptionIndex = 0;
+  let alternativeLabels = [];
+  let alternativeSearches = 0;
   let routeStartPoint = null;
   let baseRouteDistanceM = 0;
   let avoidClosures = [];
@@ -239,6 +254,22 @@ export function setupRouting(map, {
   let suppressMapClick = false;
   let suppressClickTimer = null;
 
+  map.addSource(ALTERNATIVES_SOURCE_ID, {
+    type: "geojson",
+    data: { type: "FeatureCollection", features: [] },
+  });
+  map.addLayer({
+    id: ALTERNATIVES_LAYER_ID,
+    type: "line",
+    source: ALTERNATIVES_SOURCE_ID,
+    layout: { "line-cap": "butt", "line-join": "round" },
+    paint: {
+      "line-color": "#a9c4bf",
+      "line-width": 3,
+      "line-opacity": 0.85,
+      "line-dasharray": [2, 1.6],
+    },
+  }, "hazard-circles");
   map.addSource(SOURCE_ID, {
     type: "geojson",
     data: { type: "FeatureCollection", features: [] },
@@ -1036,7 +1067,7 @@ export function setupRouting(map, {
     recomputeRouteHazards();
   }
 
-  function requestWorkerRoute(start, end, blockedPoints = []) {
+  function requestWorkerRoute(start, end, blockedPoints = [], penalizedEdges = []) {
     if (!validPoint(start) || !validPoint(end)) {
       return Promise.reject(new Error("Route coordinates are invalid."));
     }
@@ -1045,13 +1076,14 @@ export function setupRouting(map, {
       pendingRequests.set(id, { resolve, reject });
       worker.postMessage({
         type: "route", requestId: id, start, destination: end, blockedPoints, preference: routePreference,
+        penalizedEdges,
       });
     });
   }
 
-  async function routeChain(points, blockedPoints = []) {
+  async function routeChain(points, blockedPoints = [], penalizedEdges = []) {
     const results = await Promise.all(points.slice(1).map(
-      (point, index) => requestWorkerRoute(points[index], point, blockedPoints),
+      (point, index) => requestWorkerRoute(points[index], point, blockedPoints, penalizedEdges),
     ));
     const affected = new Set();
     for (const result of results) {
@@ -1110,6 +1142,7 @@ export function setupRouting(map, {
       avoidClosures = candidateClosures.filter((closure) => affected.has(closure.id));
       legs = result.legs;
       installRoute(result.route);
+      startAlternatives(version, currentPoints(routeStartPoint), result, blockedPointsFor(avoidClosures));
     } catch {
       if (!alreadyAvoided && version === planVersion) showAvoidNotice();
     } finally {
@@ -1137,7 +1170,97 @@ export function setupRouting(map, {
     avoidNotice = "";
   }
 
-  function installRoute(route) {
+  // Share of `route`'s length on edges that `other` does not use.
+  function unsharedShare(route, other) {
+    const otherEdges = new Set(other.edgeIndices.map((edge) => edge.index));
+    let unshared = 0;
+    for (const edge of route.edgeIndices) {
+      if (!otherEdges.has(edge.index)) unshared += edge.end_m - edge.start_m;
+    }
+    return route.totalDistanceM > 0 ? unshared / route.totalDistanceM : 0;
+  }
+
+  function startAlternatives(version, points, best, blockedPoints) {
+    routeOptions = [{ route: best.route, legs: best.legs }];
+    activeOptionIndex = 0;
+    renderAlternatives();
+    alternativeSearches += 1;
+    findAlternatives(version, points, blockedPoints)
+      .catch(() => {})
+      .finally(() => { alternativeSearches -= 1; });
+  }
+
+  async function findAlternatives(version, points, blockedPoints) {
+    const best = routeOptions[0].route;
+    const found = [best];
+    for (let search = 0; search < MAX_ALTERNATIVE_SEARCHES && routeOptions.length <= MAX_ALTERNATIVES; search += 1) {
+      const penalized = [...new Set(found.flatMap((route) => route.edgeIndices.map((edge) => edge.index)))];
+      const result = await routeChain(points, blockedPoints, penalized);
+      if (version !== planVersion || !result.route) return;
+      found.push(result.route);
+      if (result.route.totalDistanceM > best.totalDistanceM * (1 + MAX_EXTRA_LENGTH)) continue;
+      if (!routeOptions.every((option) => unsharedShare(result.route, option.route) >= MIN_UNSHARED_SHARE)) continue;
+      routeOptions.push({ route: result.route, legs: result.legs });
+      renderAlternatives();
+    }
+  }
+
+  // Where to put an alternative's label: the middle of its stretch that the active route does not use.
+  function alternativeLabelPoint(route) {
+    const activeEdges = new Set(activeRoute.edgeIndices.map((edge) => edge.index));
+    const own = route.edgeIndices.filter((edge) => !activeEdges.has(edge.index));
+    const edges = own.length > 0 ? own : route.edgeIndices;
+    const total = edges.reduce((sum, edge) => sum + edge.end_m - edge.start_m, 0);
+    let walked = 0;
+    for (const edge of edges) {
+      walked += edge.end_m - edge.start_m;
+      if (walked >= total / 2) {
+        return route.geometry[Math.round((edge.geometry_start_index + edge.geometry_end_index) / 2)];
+      }
+    }
+    return route.geometry[Math.floor(route.geometry.length / 2)];
+  }
+
+  function renderAlternatives() {
+    for (const marker of alternativeLabels) marker.remove();
+    alternativeLabels = [];
+    const features = [];
+    if (activeRoute) {
+      routeOptions.forEach((option, index) => {
+        if (index === activeOptionIndex) return;
+        features.push({
+          type: "Feature",
+          geometry: { type: "LineString", coordinates: option.route.geometry },
+          properties: { option: index },
+        });
+        const label = document.createElement("button");
+        label.type = "button";
+        label.className = "route-alternative-label";
+        const text = `${formatMiles(option.route.totalDistanceM)} · ${formatMinutes(option.route.estimatedTimeSeconds)}`;
+        label.textContent = text;
+        label.setAttribute("aria-label", `Alternative route, ${text}. Use this route.`);
+        label.addEventListener("click", (event) => {
+          event.stopPropagation();
+          activateOption(index);
+        });
+        alternativeLabels.push(new maplibregl.Marker({ element: label })
+          .setLngLat(alternativeLabelPoint(option.route)).addTo(map));
+      });
+    }
+    map.getSource(ALTERNATIVES_SOURCE_ID).setData({ type: "FeatureCollection", features });
+  }
+
+  // Tapping an alternative makes it the active route; hazards, the panel, share text, and fare follow it.
+  function activateOption(index) {
+    const option = routeOptions[index];
+    if (!option || index === activeOptionIndex) return;
+    activeOptionIndex = index;
+    legs = option.legs;
+    installRoute(option.route, { fit: false });
+    renderAlternatives();
+  }
+
+  function installRoute(route, { fit = true } = {}) {
     activeRoute = route;
     lastRouteFeature = {
       type: "Feature",
@@ -1150,6 +1273,7 @@ export function setupRouting(map, {
     recomputeRouteHazards();
     renderPlan();
     setRouteStatus(routeSummaryStatus());
+    if (!fit) return;
     map.fitBounds(routeBounds(route.geometry), {
       padding: { top: 112, right: 52, bottom: 132, left: 52 },
       maxZoom: 12.5,
@@ -1162,6 +1286,9 @@ export function setupRouting(map, {
     lastRouteFeature = null;
     activeRoute = null;
     legs = [];
+    routeOptions = [];
+    activeOptionIndex = 0;
+    renderAlternatives();
   }
 
   function showRouteFailure(message) {
@@ -1199,6 +1326,9 @@ export function setupRouting(map, {
   async function updateRoute() {
     const version = ++planVersion;
     legs = [];
+    routeOptions = [];
+    activeOptionIndex = 0;
+    renderAlternatives();
     renderPlan();
     if (!destinationPoint) {
       renderRouteHazards();
@@ -1251,6 +1381,7 @@ export function setupRouting(map, {
         if (validPoint(currentLocation)) liveFix = currentLocation;
       }
       installRoute(chosen.route);
+      startAlternatives(version, points, chosen, blockedPointsFor(avoidClosures));
       dismissHint();
       return chosen;
     } catch (error) {
@@ -1415,6 +1546,15 @@ export function setupRouting(map, {
       applyPick(event.lngLat.toArray());
       return;
     }
+    const { x, y } = event.point;
+    const alternative = map.queryRenderedFeatures(
+      [[x - ALTERNATIVE_TAP_PX, y - ALTERNATIVE_TAP_PX], [x + ALTERNATIVE_TAP_PX, y + ALTERNATIVE_TAP_PX]],
+      { layers: [ALTERNATIVES_LAYER_ID] },
+    )[0];
+    if (alternative) {
+      activateOption(alternative.properties.option);
+      return;
+    }
     // Hazard circles have their own popup; any other tap near an indexed place opens the place.
     if (map.getLayer("hazard-circles")
         && map.queryRenderedFeatures(event.point, { layers: ["hazard-circles"] }).length > 0) return;
@@ -1546,6 +1686,13 @@ export function setupRouting(map, {
         blockedPoints,
       ),
       routeLegs: () => legs.map((leg) => ({ ...leg })),
+      alternativesSearching: () => alternativeSearches > 0,
+      routeOptions: () => routeOptions.map((option, index) => ({
+        active: index === activeOptionIndex,
+        distanceM: option.route.totalDistanceM,
+        timeSeconds: option.route.estimatedTimeSeconds,
+        roads: routeRoadNames(option.route, Infinity),
+      })),
       mapCenter: () => map.getCenter().toArray(),
       mapBearing: () => map.getBearing(),
       project: (latitudeLongitude) => {

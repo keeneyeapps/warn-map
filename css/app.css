@@ -998,3 +998,22 @@ body {
   font-size: 11px;
   font-weight: 400;
 }
+
+.route-alternative-label {
+  min-height: 30px;
+  padding: 4px 9px;
+  border: 1px solid #a9c4bf;
+  border-radius: 15px;
+  background: rgb(23 27 29 / 92%);
+  color: #e3ecea;
+  font: 600 12px/1.2 "Noto Sans", "Segoe UI", sans-serif;
+  white-space: nowrap;
+  box-shadow: 0 1px 6px rgb(0 0 0 / 45%);
+  cursor: pointer;
+}
+
+.route-alternative-label:hover,
+.route-alternative-label:focus-visible {
+  border-color: #54dfb3;
+  color: #ffffff;
+}
