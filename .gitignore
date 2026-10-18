@@ -4,4 +4,6 @@ tools/*
 !tools/build_addresses.py
 !tools/build_tiles.py
 !tools/build_places.py
+!tools/build_icons.py
+!tools/build_boundary.py
 !tools/region.py

@@ -31,6 +31,12 @@ Sources:
 
 Each place keeps only its name, a category (health, school, government, emergency, store, food, lodging, fuel, transport, park, landmark, other), a type label such as "Hospital" or "Grocery", the city (its `addr:city`, else the postal city of the nearest address point within 5 km), a street address when OSM has `addr:*` tags, a phone number when tagged (`phone` or `contact:phone`, normalised to +1-NNN-NNN-NNNN), a website when tagged, and a point. Opening hours and every other tag are dropped. A place with the same name and category as another within 50 m is a duplicate; the GeoHub record is kept and takes the OSM record's phone, website, or address if it has none. Phone numbers come only from these public business and facility records; the map shows them as a tap-to-call link on a place chosen for the route and dials nothing on its own.
 
+The region's optional `boundary` polygon marks its core area (for Kenai, the hull of the Borough's address points pushed out 3 km, printed by `python tools/build_boundary.py --region regions/kenai/region.json`). Places outside it are suggested only when fewer than 3 matches lie inside it, and always after them, so "walmart" near Kenai lists the Kenai store before any in Anchorage or Wasilla. The boundary never affects hazards.
+
+`places_overrides` in `region.json` corrects the built index at load time: each entry names a place (matched ignoring case) and gives a `phone` and/or `point` to use instead, with a `source` note. Central Peninsula Hospital's main number, (907) 714-4404, comes from the hospital's own website.
+
+Tapping the map within 30 m of an indexed place opens that place's popup (name, type, call link if it has a phone, and Route here). When a place popup would sit under the route panel, the panel folds to its header and unfolds again when the popup closes.
+
 To rebuild it, run `python tools/build_places.py --region regions/kenai/region.json --fetch` after the road graph and address index (it reads the OSM extract the graph script downloads, and the address index for cities). Leave out `--fetch` to reuse the GeoHub layers already downloaded.
 
 ## Adding a region
@@ -41,6 +47,10 @@ To rebuild it, run `python tools/build_places.py --region regions/kenai/region.j
 4. Point `REGION_FILE` in `js/config.js` at the new region file.
 
 No code changes are needed.
+
+## Icon
+
+The app icons in `icons/` show the moose-head artwork, which is © Luna Montgomery, all rights reserved, used by permission; it is not covered by any licence for the rest of this repository (see `LICENSE`). The road pattern and hazard-stripe border are drawn by `tools/build_icons.py`, which composites the icons from the moose master kept in the Android repository: `python tools/build_icons.py --moose ../WARN/art/moose_head_master.png`.
 
 ## iOS notes
 

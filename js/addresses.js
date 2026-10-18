@@ -2,13 +2,15 @@
 // files). Both are static files served with the app and precached by the service worker; nothing here sends a
 // query anywhere.
 
-import { regionFileUrl } from "./region.js";
+import { region, regionFileUrl } from "./region.js";
 
 const INDEX_URL = regionFileUrl("addresses");
 const PLACES_URL = regionFileUrl("places");
 const MAX_SUGGESTIONS = 8;
 const NEAREST_NUMBERS_PER_STREET = 2;
 const METERS_PER_DEGREE = 111_320;
+// Places outside the region's core boundary are suggested only when fewer than this many inside it match.
+const MIN_INSIDE_RESULTS = 3;
 
 // Each spelling maps to one canonical token so "Road" and "Rd" are interchangeable on both sides.
 const SUFFIXES = {
@@ -59,11 +61,34 @@ function prepareIndex(data) {
   return { places, streets, placeNames: new Set(places.map((place) => place.joined)) };
 }
 
+// Ray casting over [lon, lat] vertices; without a boundary every point counts as inside.
+function insideBoundary(point) {
+  const polygon = region.boundary;
+  if (!Array.isArray(polygon) || polygon.length < 3) return true;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
+    const [xi, yi] = polygon[i];
+    const [xj, yj] = polygon[j];
+    if ((yi > point[1]) !== (yj > point[1])
+        && point[0] < ((xj - xi) * (point[1] - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+// region.json's places_overrides, applied on top of the built index: a phone or point for every place whose
+// name matches, ignoring case.
+function placeOverride(name) {
+  const key = name.toLowerCase();
+  return (region.places_overrides || []).find((entry) => String(entry.name).toLowerCase() === key) || null;
+}
+
 // Named places (businesses, services, facilities): [name, category, label, city, address, phone, website, lon, lat].
 function prepareNamedPlaces(data) {
   return data.places.map(([name, category, label, city, address, phone, website, longitude, latitude]) => {
     const tokens = normaliseTokens(name);
     const cityName = city >= 0 ? data.cities[city] : "";
+    const override = placeOverride(name);
+    const point = Array.isArray(override?.point) ? override.point : [longitude, latitude];
     return {
       name,
       tokens,
@@ -74,11 +99,32 @@ function prepareNamedPlaces(data) {
       label: data.labels[label],
       city: cityName,
       address,
-      phone,
+      phone: override?.phone || phone,
       website,
-      point: [longitude, latitude],
+      point,
+      inside: insideBoundary(point),
     };
   });
+}
+
+function placeDetails(place) {
+  return { name: place.name, label: place.label, city: place.city, address: place.address, phone: place.phone,
+    point: place.point };
+}
+
+/** The indexed place nearest `point` ([lon, lat]) within `maxMeters`, as place details, or null. */
+export async function nearestNamedPlace(point, maxMeters) {
+  const index = await loadAddressIndex();
+  let best = null;
+  let bestDistance = maxMeters;
+  for (const place of index.namedPlaces) {
+    const distance = distanceMeters(point, place.point);
+    if (distance <= bestDistance) {
+      best = place;
+      bestDistance = distance;
+    }
+  }
+  return best ? placeDetails(best) : null;
 }
 
 async function fetchJson(url, what) {
@@ -229,9 +275,10 @@ export async function searchAddresses(text, location = null) {
         numberGap: 0,
         distance: hasLocation ? distanceMeters(location, place.point) : Infinity,
         kind: "place",
+        inside: place.inside,
         label: placeLabel(place),
         point: () => place.point,
-        place: { name: place.name, label: place.label, city: place.city, address: place.address, phone: place.phone },
+        place: placeDetails(place),
       });
     }
   }
@@ -293,11 +340,15 @@ export async function searchAddresses(text, location = null) {
     || first.label.localeCompare(second.label)
   ));
 
+  // Places outside the core boundary go after everything inside it, and only when few inside results match.
   const seen = new Set();
+  const unique = candidates.filter((candidate) => !seen.has(candidate.label) && seen.add(candidate.label));
+  const inside = unique.filter((candidate) => candidate.inside !== false);
+  const ranked = inside.length >= MIN_INSIDE_RESULTS
+    ? inside
+    : [...inside, ...unique.filter((candidate) => candidate.inside === false)];
   const results = [];
-  for (const candidate of candidates) {
-    if (seen.has(candidate.label)) continue;
-    seen.add(candidate.label);
+  for (const candidate of ranked) {
     const result = { label: candidate.label, kind: candidate.kind, point: candidate.point };
     if (candidate.place) result.place = candidate.place;
     results.push(result);

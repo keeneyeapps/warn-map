@@ -8,6 +8,7 @@
 - Work one step at a time. Implement only what the current prompt requests.
 - Region pack: everything region-specific (bbox, start view, data file paths, sources, address field mapping, hazard region_code, wildlife) lives in `regions/<id>/region.json`, and `js/config.js` names the one region file to load. Nothing region-specific belongs in code; read it from the region file.
 - Hazards are never filtered by region: the region's `region_code` and bbox are informational and never scope hazard visibility.
+- `places_overrides` in region.json may set a place's phone or point; each entry carries a `source` note, and a phone must come from the business's or facility's own public listing.
 - Phone numbers in the places index come only from public business and facility records (OSM business/facility tags and Borough facility layers), never from residential or address data. A phone is shown only as a tap-to-call link for a place the person chose; nothing dials or sends on its own.
 
 ## Layout
@@ -27,4 +28,6 @@
 - `graph/kenai-roads.json`: offline road graph; rebuild with `tools/build_graph.py --region` from the ignored Geofabrik extract.
 - `addresses/kenai-addresses.json`: offline address index (street, number, unit, postal city, dispatch community, point only); rebuild with `tools/build_addresses.py --region … --fetch`.
 - `places/kenai-places.json`: offline named-places index (name, category, type label, city, street address, public phone, website, point only); rebuild with `tools/build_places.py --region … --fetch` after the graph and address index.
+- `icons/`: app icons built by `tools/build_icons.py` from Luna Montgomery's moose-head master (kept in the Android repo). The moose artwork is © Luna Montgomery, all rights reserved, used by permission; see `LICENSE`. Never copy the master or the artwork into other assets without that permission.
+- `LICENSE`: the artwork notice and data notices.
 - `docs/screenshots/`: local verification screenshots.

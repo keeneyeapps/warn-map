@@ -6,6 +6,18 @@
     "center": [-151.06, 60.49],
     "zoom": 10
   },
+  "boundary": [
+    [-153.68, 59.632], [-151.731, 59.099], [-150.844, 59.346], [-148.753, 59.944], [-148.992, 60.672],
+    [-149.384, 60.914], [-149.526, 60.95], [-151.045, 61.211], [-151.05, 61.211], [-151.442, 61.037]
+  ],
+  "boundary_note": "Optional core area for suggestions: the convex hull of the KPB address points pushed out 3 km (tools/build_boundary.py). Places outside it are suggested only when fewer than 3 inside it match, and always after them. It never affects hazards.",
+  "places_overrides": [
+    {
+      "name": "Central Peninsula Hospital",
+      "phone": "+1-907-714-4404",
+      "source": "Main number on the hospital's own website, https://www.cpgh.org/ (header and footer), checked 2026-10-18."
+    }
+  ],
   "hazards": {
     "region_code": "KPB",
     "note": "Informational only: the region_code the WARN database uses for this area. The app shows every row of public_hazards and never filters hazards by region_code or by this bbox."

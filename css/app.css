@@ -911,3 +911,17 @@ body {
   color: #0b6b4f;
   font-size: 14px;
 }
+
+.place-popup .place-route-here {
+  min-height: 36px;
+  margin-top: 6px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 4px;
+  background: #171b1d;
+  color: #76e8c1;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}

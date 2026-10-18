@@ -1,10 +1,12 @@
 import * as maplibregl from "../vendor/maplibre-gl.js";
-import { loadAddressIndex, normaliseTokens, searchAddresses } from "./addresses.js";
+import { loadAddressIndex, nearestNamedPlace, normaliseTokens, searchAddresses } from "./addresses.js";
 import { formatHazardAge, openHazardPopup } from "./hazards.js";
 import { hazardsAlongRoute } from "./route-hazards.js";
 import { region, regionFileUrl } from "./region.js";
 
 const SOURCE_ID = "computed-route";
+// A plain tap this close to an indexed place opens that place's popup.
+const PLACE_TAP_RADIUS_M = 30;
 const CASING_LAYER_ID = "computed-route-casing";
 const LINE_LAYER_ID = "computed-route-line";
 const HINT_KEY = "warn-map-route-hint-dismissed";
@@ -381,7 +383,38 @@ export function setupRouting(map, {
     return link;
   }
 
-  function placePopupContent(place) {
+  function rectsOverlap(first, second) {
+    return first.left < second.right && second.left < first.right
+      && first.top < second.bottom && second.top < first.bottom;
+  }
+
+  function collapsePanel() {
+    hazardsToggle.setAttribute("aria-expanded", "false");
+    panelBody.hidden = true;
+  }
+
+  // When a place popup opens where the route panel would cover it (or its marker), fold the panel to its header,
+  // and unfold it again when that popup closes unless the panel was toggled meanwhile.
+  function uncoverPopup(popup, anchorElement = null) {
+    if (hazardsPanel.hidden || panelBody.hidden) return;
+    const panelRect = hazardsPanel.getBoundingClientRect();
+    const covered = [popup.getElement(), anchorElement]
+      .some((element) => element && rectsOverlap(element.getBoundingClientRect(), panelRect));
+    if (!covered) return;
+    collapsePanel();
+    popup.once("close", () => {
+      if (!hazardsPanel.hidden && panelBody.hidden && hazardsToggle.getAttribute("aria-expanded") === "false"
+          && !panelToggledSince) {
+        hazardsToggle.setAttribute("aria-expanded", "true");
+        panelBody.hidden = false;
+      }
+    });
+    panelToggledSince = false;
+  }
+
+  let panelToggledSince = false;
+
+  function placePopupContent(place, { routeHere = null } = {}) {
     const article = document.createElement("article");
     article.className = "place-popup";
     const title = document.createElement("h2");
@@ -401,7 +434,32 @@ export function setupRouting(map, {
       phone.append(callLink(place, "place-call"));
       article.append(phone);
     }
+    if (routeHere) {
+      const button = document.createElement("button");
+      button.className = "place-route-here";
+      button.type = "button";
+      button.textContent = "Route here";
+      button.addEventListener("click", routeHere);
+      article.append(button);
+    }
     return article;
+  }
+
+  let tappedPlacePopup = null;
+
+  function openTappedPlace(place) {
+    tappedPlacePopup?.remove();
+    const popup = new maplibregl.Popup({ closeButton: true, maxWidth: "300px" });
+    popup.setLngLat(place.point)
+      .setDOMContent(placePopupContent(place, {
+        routeHere: () => {
+          popup.remove();
+          setPlanPoint("destination", place.point, place.name, place);
+        },
+      }))
+      .addTo(map);
+    tappedPlacePopup = popup;
+    uncoverPopup(popup);
   }
 
   function attachPlacePopup(marker, place) {
@@ -411,10 +469,13 @@ export function setupRouting(map, {
       return;
     }
     if (!placePopups.has(place)) {
-      placePopups.set(place, new maplibregl.Popup({ closeButton: true, maxWidth: "300px", offset: 18 })
-        .setDOMContent(placePopupContent(place)));
+      const popup = new maplibregl.Popup({ closeButton: true, maxWidth: "300px", offset: 18 })
+        .setDOMContent(placePopupContent(place));
+      popup.on("open", () => uncoverPopup(popup, popup.markerElement));
+      placePopups.set(place, popup);
     }
     const popup = placePopups.get(place);
+    popup.markerElement = marker.getElement();
     if (marker.getPopup() !== popup) marker.setPopup(popup);
   }
 
@@ -1320,11 +1381,24 @@ export function setupRouting(map, {
     if (sheetTarget) closeAddressSheet();
     else if (pickTarget) setPickTarget(null);
   });
-  map.on("click", (event) => {
-    if (pickTarget) applyPick(event.lngLat.toArray());
+  map.on("click", async (event) => {
+    if (pickTarget) {
+      applyPick(event.lngLat.toArray());
+      return;
+    }
+    // Hazard circles have their own popup; any other tap near an indexed place opens the place.
+    if (map.getLayer("hazard-circles")
+        && map.queryRenderedFeatures(event.point, { layers: ["hazard-circles"] }).length > 0) return;
+    try {
+      const place = await nearestNamedPlace(event.lngLat.toArray(), PLACE_TAP_RADIUS_M);
+      if (place) openTappedPlace(place);
+    } catch {
+      // The places index is unavailable; a tap does nothing, as before.
+    }
   });
 
   hazardsToggle.addEventListener("click", () => {
+    panelToggledSince = true;
     const expanded = hazardsToggle.getAttribute("aria-expanded") !== "false";
     hazardsToggle.setAttribute("aria-expanded", String(!expanded));
     panelBody.hidden = expanded;
