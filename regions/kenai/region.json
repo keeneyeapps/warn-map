@@ -57,7 +57,16 @@
     }
   },
   "wildlife": {
-    "species": ["moose", "caribou", "bear"],
+    "species": [
+      "moose", "caribou", "black bear", "brown bear", "wolf", "coyote", "lynx", "fox", "porcupine", "beaver",
+      "muskrat", "hare", "sheep", "dog", "snow goose", "swan", "sandhill crane", "eagle", "raven"
+    ],
+    "livestock": [
+      "horse", "cattle", "goat", "emu", "alpaca", "llama", "chicken", "rooster", "turkey", "goose", "pheasant"
+    ],
+    "notes": {
+      "eagle": "Usually reported feeding on a carcass on the road."
+    },
     "quick_button": "moose",
     "button_icon": ""
   }

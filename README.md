@@ -6,7 +6,7 @@ The app is read-only and may only query the WARN Supabase `public_hazards` view 
 
 Everything region-specific lives in `regions/<id>/region.json`, and `js/config.js` names the one region file the app loads (`REGION_FILE`). The region file holds the id and display name, the bbox, the start view, the data files (basemap tiles, road graph, address index, and a reserved `places` slot) with their source URLs and licence notes, the address source's field mapping, the `region_code` the WARN database uses for the area, and the expected wildlife. The code reads paths, bbox, and start view from it, and the service worker builds its data precache list from it. Data paths in `region.json` are relative to the repository root.
 
-The `hazards.region_code` entry is informational. The app shows every row of `public_hazards` and never filters hazards by region code or by the bbox. The `wildlife` section (species expected in the region, the quick-button species, and an optional button icon path, empty to keep the default moose logo) is not read by the map yet.
+The `hazards.region_code` entry is informational. The app shows every row of `public_hazards` and never filters hazards by region code or by the bbox. The `wildlife` section (wild species and livestock expected in the region, notes on how some are usually reported, the quick-button species, and an optional button icon path, empty to keep the default moose logo) is not read by the map yet.
 
 ## Basemap tiles
 
