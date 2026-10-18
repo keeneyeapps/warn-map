@@ -1118,3 +1118,213 @@ body {
 .map-controls.is-settings-open {
   z-index: 4;
 }
+
+/* ---- Wide screens: the route bar, status strip, route panel and hazards form a left column; settings and About
+   open as a sheet over that column. Nothing here applies below 900px. ---- */
+@media (min-width: 900px) {
+  #map {
+    position: fixed;
+    inset: 0 0 0 380px;
+    width: auto;
+    height: auto;
+  }
+
+  .status-stack {
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 380px;
+    align-content: start;
+    gap: 8px;
+    padding: max(12px, env(safe-area-inset-top)) 12px 12px max(12px, env(safe-area-inset-left));
+    overflow-y: auto;
+    border-right: 1px solid rgb(255 255 255 / 10%);
+    background: #171b1d;
+    pointer-events: auto;
+  }
+
+  .route-hazards-panel {
+    max-height: none;
+  }
+
+  .settings-panel {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 380px;
+    max-height: none;
+    align-content: start;
+    padding: 16px;
+    border-width: 0 1px 0 0;
+    background: #171b1d;
+    border-radius: 0;
+    box-shadow: 4px 0 18px rgb(0 0 0 / 40%);
+  }
+
+  .map-controls.is-settings-open {
+    z-index: 5;
+  }
+}
+
+/* ---- Printing a route (js/print.js builds #print-sheet at print time). ---- */
+.print-sheet {
+  display: none;
+}
+
+@media print {
+  @page {
+    margin: 12mm;
+  }
+
+  html,
+  body {
+    width: auto;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+    background: #fff;
+    color: #000;
+  }
+
+  body > :not(.print-sheet) {
+    display: none !important;
+  }
+
+  .print-sheet {
+    display: block;
+    color: #000;
+    font: 10.5pt/1.4 "Noto Sans", "Segoe UI", sans-serif;
+  }
+
+  .print-first-page {
+    break-after: page;
+  }
+
+  .print-sheet h1 {
+    margin: 0 0 1mm;
+    font-size: 18pt;
+  }
+
+  .print-sheet h2 {
+    margin: 0 0 2mm;
+    font-size: 13pt;
+  }
+
+  .print-sheet .print-hazards-heading {
+    margin-top: 6mm;
+  }
+
+  .print-date {
+    margin: 0 0 4mm;
+    color: #333;
+  }
+
+  .print-map {
+    display: block;
+    width: 100%;
+    max-height: 205mm;
+    object-fit: contain;
+    border: 1px solid #999;
+  }
+
+  .print-sheet .route-legs {
+    display: block;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .print-sheet .route-leg {
+    display: flex;
+    align-items: baseline;
+    gap: 3mm;
+    min-height: 0;
+    padding: 1.5mm 0;
+    border-bottom: 1px solid #ccc;
+    background: none;
+    color: #000;
+    font-size: 10.5pt;
+  }
+
+  .print-sheet .route-leg-badge {
+    flex: none;
+    border: 1px solid #000;
+    print-color-adjust: exact;
+  }
+
+  .print-sheet .route-leg-label,
+  .print-sheet .route-leg-text {
+    flex: 1;
+    overflow: visible;
+    white-space: normal;
+  }
+
+  .print-sheet .route-leg-distances,
+  .print-sheet .route-leg-distance,
+  .print-sheet .route-leg-running {
+    color: #000;
+    text-align: right;
+  }
+
+  .print-sheet .route-leg-call {
+    color: #000;
+    text-decoration: none;
+  }
+
+  .print-sheet .route-total {
+    display: flex;
+    gap: 6mm;
+    padding: 2mm 0;
+    border: 0;
+    color: #000;
+    font-size: 11pt;
+    font-weight: 700;
+  }
+
+  .print-sheet .route-preference-in-use,
+  .print-sheet .route-fare {
+    color: #000;
+    font-weight: 400;
+  }
+
+  .print-sheet .route-hazard-entry,
+  .print-sheet .route-hazard-row {
+    display: flex;
+    gap: 3mm;
+    width: 100%;
+    padding: 1.2mm 0;
+    border: 0;
+    border-bottom: 1px solid #ddd;
+    background: none;
+    color: #000;
+    font: inherit;
+    text-align: left;
+    break-inside: avoid;
+  }
+
+  .print-sheet .route-hazard-title {
+    flex: 1;
+    color: #000;
+  }
+
+  .print-sheet .route-hazard-distance,
+  .print-sheet .route-hazard-age,
+  .print-sheet .route-hazards-empty {
+    color: #333;
+  }
+
+  .print-sheet .route-hazard-dot {
+    print-color-adjust: exact;
+  }
+
+  .print-notices {
+    margin-top: 8mm;
+    color: #333;
+    font-size: 8.5pt;
+  }
+
+  .print-notice {
+    margin: 0 0 1mm;
+  }
+}

@@ -3,6 +3,7 @@ import { loadAddressIndex, nearestNamedPlace, normaliseTokens, searchAddresses }
 import { formatHazardAge, openHazardPopup } from "./hazards.js";
 import { hazardsAlongRoute } from "./route-hazards.js";
 import { fareFor, formatMoney, isDriverMode } from "./driver.js";
+import { printRoute } from "./print.js";
 import { region, regionFileUrl } from "./region.js";
 
 const SOURCE_ID = "computed-route";
@@ -839,6 +840,22 @@ export function setupRouting(map, {
     return lines.join("\n");
   }
 
+  function printCurrentRoute() {
+    if (!legsAreCurrent() || !routeStartPoint) return;
+    const waypoints = [
+      { point: routeStartPoint, badge: "S", colour: "#ffbd4a", text: "#171b1d" },
+      ...stops.map((stop, index) => ({ point: stop.point, badge: String(index + 1), colour: "#f4f3ed", text: "#171b1d" })),
+      { point: destinationPoint, badge: "D", colour: "#54dfb3", text: "#10211d" },
+    ];
+    printRoute({
+      map,
+      waypoints,
+      plan: planElement,
+      hazardsTitle: hazardsTitle.textContent,
+      hazardsList,
+    }).catch(() => {});
+  }
+
   async function shareRoute(button) {
     const text = buildShareText();
     if (!text) return;
@@ -942,7 +959,12 @@ export function setupRouting(map, {
       share.type = "button";
       share.textContent = "Share";
       share.addEventListener("click", () => shareRoute(share));
-      actions.append(share);
+      const print = document.createElement("button");
+      print.className = "route-plan-button route-print-button";
+      print.type = "button";
+      print.textContent = "Print";
+      print.addEventListener("click", printCurrentRoute);
+      actions.append(share, print);
     }
     if (customStart) {
       const useLocation = document.createElement("button");

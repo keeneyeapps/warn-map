@@ -20,6 +20,7 @@
 - `js/region.js`: loads the region pack at startup; other modules take paths, bbox, and start view from it.
 - `js/addresses.js`: typed-address and named-place matching over the on-device address and places indexes (never queried over the network).
 - `js/hazards.js`: read-only hazard polling, GeoJSON layers, and popups.
+- `js/print.js`: route printing; captures the map canvas at print time and builds the print-only sheet (`@media print` in `css/app.css`).
 - `js/driver.js`: driver tools (tariff, planner fare, trip meter, saved trips). Hidden unless driver mode is on (`?driver` once, or 7 taps on the About version line); with it off, no fare, tariff, or trip UI may exist in the DOM. Tariff and trip data stay in localStorage only.
 - `js/map.js`: MapLibre, PMTiles, local theme assets, and map setup.
 - `vendor/`: locally served libraries, glyphs, and sprites.

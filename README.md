@@ -26,6 +26,12 @@ Behind the gear, "Route by" chooses how the on-device router weighs roads: Faste
 
 After the chosen route, the router looks for up to two alternatives by searching again with every edge of the routes already found counted 1.6 times as costly. An alternative is kept only if at least 25% of its length is on roads the routes already shown do not use, and it is no more than 40% longer than the best route. Alternatives use the same route preference and avoided closures. They are drawn as thinner dashed lines under the route, each labelled with its distance and minutes; tapping one (or its label) makes it the active route. Hazards along the route, the route panel, share text, and fare always describe the active route.
 
+## Wide screens and printing
+
+From 900 px wide, the route bar, status strip, route panel, and hazards list sit in a 380 px left column and the map fills the rest; settings and About open as a sheet over the column. Narrower screens keep the phone layout.
+
+With a route showing, Print (beside Share) opens the browser's print dialog. The first page is the map as currently framed, with the route and its waypoints, under the title "WARN Map route" and the date; the next page lists the legs with their distances and the total, then the reported hazards along the route, then the OpenStreetMap attribution and the Borough address-data notice. Fare lines print only in driver mode. Both Letter and A4 fit; `docs/screenshots/print-sample.pdf` is a sample.
+
 ## Driver tools
 
 A trip meter and tariff for professional drivers is hidden: in normal use none of it is in the page. Open the map once with `?driver` (for example `https://keeneyeapps.github.io/warn-map/?driver`; the query is removed from the address), or tap the version line in the About card (behind the gear) 7 times, to turn it on; 7 more taps turn it off. Driver mode adds the tariff settings (start fare, increment, rate per mile, wait rate per minute, and the speed below which time counts as waiting), a fare line on planned routes, a Start trip / End trip meter, and a list of saved trips. The fare is the start fare plus one increment per unit, where units are the trip's miles divided by (increment ÷ rate per mile) plus its waiting seconds divided by (increment ÷ wait rate), rounded half up.
