@@ -547,7 +547,7 @@ export function setupRouting(map, {
       const now = Date.now();
       for (const row of hazards) {
         const properties = row.feature.properties;
-        const title = properties.title || properties.label || properties.hazard_type || "Hazard";
+        const title = properties.title || "Hazard";
         const age = Number.isFinite(Date.parse(properties.created_at))
           ? ` (reported ${lowerFirst(formatHazardAge(properties.created_at, now))})`
           : "";
@@ -716,8 +716,7 @@ export function setupRouting(map, {
 
       const title = document.createElement("span");
       title.className = "route-hazard-title";
-      title.textContent = properties.title || properties.label || properties.specific
-        || properties.hazard_type || "Hazard";
+      title.textContent = properties.title || "Hazard";
 
       const distance = document.createElement("span");
       distance.className = "route-hazard-distance";

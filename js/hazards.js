@@ -61,27 +61,98 @@ const categoryColors = {
   DELAY: "#8E24AA",
 };
 
-function categoryForType(value) {
-  const type = String(value || "OTHER_HAZARD").toUpperCase();
-  if (categoryByType[type]) return categoryByType[type];
+// Plain names per type, from the Android app's AlertWording.descriptor, except road damage, which the
+// map calls "Rough road". Never show a raw hazard_type code.
+const typeLabels = {
+  MOOSE: "Moose",
+  CARIBOU: "Caribou",
+  BEAR: "Bear",
+  ANIMAL_DEBRIS: "Animal debris",
+  ANIMAL_OTHER: "Animal",
+  LIVESTOCK: "Livestock",
+  DOMESTIC_ANIMAL: "Loose animal",
+  DEBRIS: "Debris",
+  STALLED_VEHICLE: "Stalled vehicle",
+  DAMAGE_MY_LANE: "Rough road",
+  DAMAGE_ONCOMING: "Rough road",
+  DAMAGE_BOTH_LANES: "Rough road",
+  FOG: "Fog",
+  SNOW_WHITEOUT: "Whiteout",
+  SMOKE: "Smoke",
+  DUST: "Blowing dust",
+  HEAVY_RAIN: "Heavy rain",
+  HYDROPLANE: "Standing water",
+  SNOW_DRIFTS: "Snow drifts",
+  BLACK_ICE: "Black ice",
+  ACCIDENT: "Accident",
+  CONSTRUCTION: "Construction",
+  CARCASS: "Dead animal",
+  ACCIDENT_BLOCKING: "Accident blocking the road",
+  EMERGENCY_RESPONSE: "Emergency scene",
+  DOWNED_POWER_LINE: "Downed power line",
+  STRUCTURAL_DAMAGE: "Structural damage",
+  OTHER_HAZARD: "Hazard",
+  DELAY: "Possible delay",
+  PEDESTRIAN_IN_ROAD: "Person in the road",
+};
 
-  if (type.includes("CARCASS") || type.includes("ROADKILL")) return "OBSTRUCTIONS";
-  if (/LIVESTOCK|HORSE|COW|CATTLE|SHEEP|GOAT/.test(type)) return "ANIMALS";
-  if (/DOG|POULTRY|CHICKEN|DUCK|GOOSE|GEESE/.test(type)) return "ANIMALS";
-  if (/STALLED|DISABLED|BREAKDOWN/.test(type)) return "OBSTRUCTIONS";
-  if (/DEBRIS|TREE|TRAILER|TRACTOR|EQUIPMENT|SPILL/.test(type)) return "OBSTRUCTIONS";
-  if (/MOOSE|CARIBOU|BEAR|ANIMAL|WILDLIFE|DEER|ELK|BISON|COYOTE|WOLF|LYNX|FOX|EAGLE|PORCUPINE|OTTER|CAT/.test(type)) return "ANIMALS";
-  if (/PEDESTRIAN|CHILD/.test(type)) return "PEDESTRIAN";
-  if (/FOG|SNOW|VISIBILITY|RAIN/.test(type)) return "VISIBILITY";
-  if (/POTHOLE|DAMAGE|HEAVE|CRACK/.test(type)) return "ROAD_DAMAGE";
-  if (/ACCIDENT|CRASH|BLOCK/.test(type)) return "CLOSURES";
-  return "OBSTRUCTIONS";
+// Exact codes only, as the Android LaneScope table: a guessed type is never lane-scoped. The stored
+// heading is already the damaged lane's direction (flipped 180 at report time for DAMAGE_ONCOMING).
+const LANE_SCOPED_DAMAGE = new Set(["DAMAGE_MY_LANE", "DAMAGE_ONCOMING"]);
+
+// Report text that names a direction or lane can't be shown as the hazard's name (AlertWording.CLAIM_WORDS).
+const CLAIM_WORDS = /\b(lane|lanes|my|your|oncoming|ahead|behind|left|right|northbound|southbound|eastbound|westbound)\b/i;
+
+// Mirrors HazardType.fromCode: exact code first, then the same keyword order for free-form codes.
+function typeForCode(value) {
+  const code = String(value || "OTHER_HAZARD").toUpperCase();
+  if (categoryByType[code]) return code;
+
+  if (code.includes("CARCASS") || code.includes("ROADKILL")) return "CARCASS";
+  if (/LIVESTOCK|HORSE|COW|CATTLE|SHEEP|GOAT/.test(code)) return "LIVESTOCK";
+  if (/DOG|POULTRY|CHICKEN|DUCK|GOOSE|GEESE/.test(code)) return "DOMESTIC_ANIMAL";
+  if (/STALLED|DISABLED|BREAKDOWN/.test(code)) return "STALLED_VEHICLE";
+  if (/DEBRIS|TREE|TRAILER|TRACTOR|EQUIPMENT|SPILL/.test(code)) return "DEBRIS";
+  if (code.includes("MOOSE")) return "MOOSE";
+  if (code.includes("CARIBOU")) return "CARIBOU";
+  if (code.includes("BEAR")) return "BEAR";
+  if (/ANIMAL|WILDLIFE|DEER|ELK|BISON|COYOTE|WOLF|LYNX|FOX|EAGLE|PORCUPINE|OTTER|CAT/.test(code)) return "ANIMAL_OTHER";
+  if (/PEDESTRIAN|CHILD/.test(code)) return "PEDESTRIAN_IN_ROAD";
+  if (/FOG|SNOW|VISIBILITY|RAIN/.test(code)) return "FOG";
+  if (/POTHOLE|DAMAGE|HEAVE|CRACK/.test(code)) return "DAMAGE_BOTH_LANES";
+  if (/ACCIDENT|CRASH|BLOCK/.test(code)) return "ACCIDENT_BLOCKING";
+  return "OTHER_HAZARD";
+}
+
+function compassLane(heading) {
+  if (heading === null || heading === undefined || heading === "" || !Number.isFinite(Number(heading))) {
+    return "lane unspecified";
+  }
+  const degrees = ((Number(heading) % 360) + 360) % 360;
+  return `${["northbound", "eastbound", "southbound", "westbound"][Math.round(degrees / 90) % 4]} lane`;
 }
 
 function displayValue(value) {
   if (typeof value === "string") return value.trim();
   if (typeof value === "number") return String(value);
   return "";
+}
+
+function reportName(value) {
+  const text = displayValue(value);
+  if (!text || text.length > 40 || /^[A-Z0-9_]+$/.test(text) || CLAIM_WORDS.test(text)) return "";
+  return text[0].toUpperCase() + text.slice(1);
+}
+
+export function hazardTitle(row) {
+  const code = (displayValue(row.hazard_type) || "OTHER_HAZARD").toUpperCase();
+  const type = typeForCode(code);
+  const name = type === "DELAY"
+    ? typeLabels.DELAY
+    : reportName(row.display_text) || reportName(row.specific) || typeLabels[type];
+  if (LANE_SCOPED_DAMAGE.has(code)) return `${name}, ${compassLane(row.heading)}`;
+  if (code === "DAMAGE_BOTH_LANES") return `${name}, both lanes`;
+  return name;
 }
 
 function isFiniteCoordinate(value, maximum) {
@@ -102,8 +173,8 @@ function featureForRow(row) {
   if (!isFiniteCoordinate(latitude, 90) || !isFiniteCoordinate(longitude, 180)) return null;
 
   const hazardType = displayValue(row.hazard_type) || "OTHER_HAZARD";
-  const category = categoryForType(hazardType);
-  const title = displayValue(row.display_text) || displayValue(row.specific) || hazardType;
+  const category = categoryByType[typeForCode(hazardType)];
+  const title = hazardTitle(row);
 
   return {
     type: "Feature",
