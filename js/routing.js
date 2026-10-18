@@ -1,4 +1,5 @@
 import * as maplibregl from "../vendor/maplibre-gl.js";
+import { loadAddressIndex, normaliseTokens, searchAddresses } from "./addresses.js";
 import { formatHazardAge, openHazardPopup } from "./hazards.js";
 import { hazardsAlongRoute } from "./route-hazards.js";
 
@@ -8,6 +9,11 @@ const LINE_LAYER_ID = "computed-route-line";
 const HINT_KEY = "warn-map-route-hint-dismissed";
 const FARE_RATE_KEY = "warn-map-fare-rate";
 const METERS_PER_MILE = 1609.344;
+const SHEET_TITLES = {
+  start: "Set start",
+  stop: "Add a stop",
+  destination: "Set destination",
+};
 const PICK_PROMPTS = {
   start: "Tap the map to set the start",
   stop: "Tap the map to add a stop",
@@ -166,6 +172,14 @@ export function setupRouting(map, {
   const pickBanner = document.querySelector("#pick-banner");
   const pickBannerText = document.querySelector("#pick-banner-text");
   const pickCancel = document.querySelector("#pick-cancel");
+  const addressSheet = document.querySelector("#address-sheet");
+  const addressSheetTitle = document.querySelector("#address-sheet-title");
+  const addressSheetClose = document.querySelector("#address-sheet-close");
+  const addressInput = document.querySelector("#address-input");
+  const addressSuggestions = document.querySelector("#address-suggestions");
+  const addressStatus = document.querySelector("#address-sheet-status");
+  const addressTapMap = document.querySelector("#address-tap-map");
+  const addressUseLocation = document.querySelector("#address-use-location");
   const worker = new Worker(new URL("./routing-worker.js", import.meta.url), { type: "module" });
   const pendingRequests = new Map();
   let requestId = 0;
@@ -173,6 +187,13 @@ export function setupRouting(map, {
   let graphTransfer = null;
   let pendingPoint = null;
   let pickTarget = null;
+  let sheetTarget = null;
+  let searchSerial = 0;
+  let searchTimer = null;
+  let currentSuggestions = [];
+  // Typed-address text for each slot; null when the point came from the map or the long-press menu.
+  let startLabel = null;
+  let destinationLabel = null;
   let customStart = null;
   let stops = [];
   let nextStopId = 0;
@@ -348,14 +369,15 @@ export function setupRouting(map, {
   }
 
   function renderRouteBar() {
-    setSlot(slotStart, "Start", customStart ? "Pin" : "My location", Boolean(customStart));
+    setSlot(slotStart, "Start", customStart ? startLabel || "Pin" : "My location", Boolean(customStart));
     setSlot(slotStops, "Stops", stops.length === 0 ? "none" : String(stops.length), stops.length > 0);
     setSlot(slotDestination, "Destination",
-      destinationPoint ? nearestPlaceName(destinationPoint) || "Set" : "tap to set",
+      destinationPoint ? destinationLabel || nearestPlaceName(destinationPoint) || "Set" : "tap to set",
       Boolean(destinationPoint));
-    slotStart.setAttribute("aria-pressed", String(pickTarget === "start"));
-    slotStops.setAttribute("aria-pressed", String(pickTarget === "stop"));
-    slotDestination.setAttribute("aria-pressed", String(pickTarget === "destination"));
+    slotStart.setAttribute("aria-pressed", String(pickTarget === "start" || sheetTarget === "start"));
+    slotStops.setAttribute("aria-pressed", String(pickTarget === "stop" || sheetTarget === "stop"));
+    slotDestination.setAttribute("aria-pressed",
+      String(pickTarget === "destination" || sheetTarget === "destination"));
   }
 
   function setPickTarget(target) {
@@ -370,21 +392,102 @@ export function setupRouting(map, {
     renderRouteBar();
   }
 
-  function applyPick(point) {
-    const target = pickTarget;
-    setPickTarget(null);
+  function setPlanPoint(target, point, label = null) {
     if (target === "start") {
       customStart = point;
+      startLabel = label;
     } else if (target === "stop") {
       nextStopId += 1;
-      stops.push({ id: nextStopId, point });
+      stops.push({ id: nextStopId, point, label });
     } else if (target === "destination") {
       destinationPoint = point;
+      destinationLabel = label;
     } else {
       return;
     }
     dismissHint();
     planChanged();
+  }
+
+  function applyPick(point) {
+    const target = pickTarget;
+    setPickTarget(null);
+    setPlanPoint(target, point);
+  }
+
+  function openAddressSheet(target) {
+    setPickTarget(null);
+    sheetTarget = target;
+    addressSheetTitle.textContent = SHEET_TITLES[target];
+    addressInput.value = "";
+    renderSuggestions([]);
+    addressStatus.textContent = "";
+    addressUseLocation.hidden = !(target === "start" && customStart);
+    addressSheet.hidden = false;
+    renderRouteBar();
+    addressInput.focus();
+    // Start reading the on-device index while the person types.
+    loadAddressIndex().catch(() => {});
+  }
+
+  function closeAddressSheet() {
+    window.clearTimeout(searchTimer);
+    searchSerial += 1;
+    sheetTarget = null;
+    addressSheet.hidden = true;
+    currentSuggestions = [];
+    renderRouteBar();
+  }
+
+  function renderSuggestions(suggestions) {
+    currentSuggestions = suggestions;
+    addressSuggestions.replaceChildren(...suggestions.map((suggestion) => {
+      const button = document.createElement("button");
+      button.className = "address-suggestion";
+      button.type = "button";
+      button.textContent = suggestion.label;
+      button.addEventListener("click", () => chooseSuggestion(suggestion));
+      button.addEventListener("keydown", (event) => {
+        const buttons = [...addressSuggestions.querySelectorAll(".address-suggestion")];
+        const position = buttons.indexOf(button);
+        if (event.key === "ArrowDown") buttons[position + 1]?.focus();
+        else if (event.key === "ArrowUp") (buttons[position - 1] || addressInput).focus();
+        else return;
+        event.preventDefault();
+      });
+      return button;
+    }));
+  }
+
+  function chooseSuggestion(suggestion) {
+    const target = sheetTarget;
+    if (!target) return;
+    const point = suggestion.point();
+    const label = suggestion.kind === "street" ? suggestion.label.replace(/ \(street\)$/, "") : suggestion.label;
+    closeAddressSheet();
+    setPlanPoint(target, point, label);
+  }
+
+  async function runAddressSearch() {
+    const serial = ++searchSerial;
+    const text = addressInput.value;
+    if (normaliseTokens(text).length === 0) {
+      renderSuggestions([]);
+      addressStatus.textContent = "";
+      return;
+    }
+    addressStatus.textContent = "Loading addresses…";
+    try {
+      const location = getLatestLocation();
+      const suggestions = await searchAddresses(text, Array.isArray(location) ? location : null);
+      if (serial !== searchSerial) return;
+      renderSuggestions(suggestions);
+      addressStatus.textContent = suggestions.length > 0 ? "" : "No matching addresses";
+    } catch {
+      if (serial !== searchSerial) return;
+      renderSuggestions([]);
+      addressStatus.textContent = "Addresses are unavailable. Tap the map instead.";
+    }
   }
 
   function closureKey(feature) {
@@ -531,9 +634,10 @@ export function setupRouting(map, {
     if (!legsAreCurrent() || !routeStartPoint) return "";
     const points = currentPoints(routeStartPoint);
     const fallbacks = ["Start", ...stops.map((stop, index) => `Stop ${index + 1}`), "Destination"];
+    const typedNames = [customStart ? startLabel : null, ...stops.map((stop) => stop.label), destinationLabel];
     const totalTenths = cumulativeLegTenths().at(-1);
     const lines = [
-      points.map((point, index) => nearestPlaceName(point) || fallbacks[index]).join(" → "),
+      points.map((point, index) => typedNames[index] || nearestPlaceName(point) || fallbacks[index]).join(" → "),
       `${formatTenths(totalTenths)} · about ${formatMinutes(activeRoute.estimatedTimeSeconds)}`,
     ];
     const roads = routeRoadNames(activeRoute);
@@ -602,13 +706,13 @@ export function setupRouting(map, {
     list.append(waypointRow({
       kind: "start",
       badge: "S",
-      label: customStart ? "Start · pin" : "Start · your location",
+      label: customStart ? `Start · ${startLabel || "pin"}` : "Start · your location",
     }));
     stops.forEach((stop, index) => {
       list.append(waypointRow({
         kind: "stop",
         badge: String(index + 1),
-        label: `Stop ${index + 1}`,
+        label: stop.label ? `Stop ${index + 1} · ${stop.label}` : `Stop ${index + 1}`,
         legIndex: destinationPoint ? index : null,
         cumulative,
         stop,
@@ -619,7 +723,7 @@ export function setupRouting(map, {
       list.append(waypointRow({
         kind: "destination",
         badge: "D",
-        label: "Destination",
+        label: destinationLabel ? `Destination · ${destinationLabel}` : "Destination",
         legIndex: stops.length,
         cumulative,
       }));
@@ -906,6 +1010,9 @@ export function setupRouting(map, {
 
   function clearRoute(message = "") {
     planVersion += 1;
+    startLabel = null;
+    destinationLabel = null;
+    closeAddressSheet();
     clearRouteLine();
     pendingPoint = null;
     customStart = null;
@@ -1008,6 +1115,7 @@ export function setupRouting(map, {
 
   function useMyLocation() {
     customStart = null;
+    startLabel = null;
     const currentLocation = getLatestLocation();
     if (validPoint(currentLocation)) liveFix = currentLocation;
     planChanged();
@@ -1077,42 +1185,63 @@ export function setupRouting(map, {
   routeAction.addEventListener("click", () => {
     const point = takePendingPoint();
     if (!point) return;
-    destinationPoint = point;
-    planChanged();
+    setPlanPoint("destination", point);
   });
 
   startHereButton.addEventListener("click", () => {
     const point = takePendingPoint();
     if (!point) return;
-    customStart = point;
-    planChanged();
+    setPlanPoint("start", point);
   });
 
   addStopButton.addEventListener("click", () => {
     const point = takePendingPoint();
     if (!point) return;
-    nextStopId += 1;
-    stops.push({ id: nextStopId, point });
-    planChanged();
+    setPlanPoint("stop", point);
   });
 
   clearRouteButton.addEventListener("click", () => clearRoute());
 
-  slotStart.addEventListener("click", () => {
-    if (customStart) {
+  function toggleSlot(target) {
+    if (sheetTarget === target || pickTarget === target) {
+      closeAddressSheet();
       setPickTarget(null);
-      useMyLocation();
       return;
     }
-    setPickTarget(pickTarget === "start" ? null : "start");
-  });
-  slotStops.addEventListener("click", () => setPickTarget(pickTarget === "stop" ? null : "stop"));
-  slotDestination.addEventListener("click", () => {
-    setPickTarget(pickTarget === "destination" ? null : "destination");
-  });
+    openAddressSheet(target);
+  }
+
+  slotStart.addEventListener("click", () => toggleSlot("start"));
+  slotStops.addEventListener("click", () => toggleSlot("stop"));
+  slotDestination.addEventListener("click", () => toggleSlot("destination"));
   pickCancel.addEventListener("click", () => setPickTarget(null));
+  addressSheetClose.addEventListener("click", closeAddressSheet);
+  addressTapMap.addEventListener("click", () => {
+    const target = sheetTarget;
+    closeAddressSheet();
+    setPickTarget(target);
+  });
+  addressUseLocation.addEventListener("click", () => {
+    closeAddressSheet();
+    useMyLocation();
+  });
+  addressInput.addEventListener("input", () => {
+    window.clearTimeout(searchTimer);
+    searchTimer = window.setTimeout(runAddressSearch, 80);
+  });
+  addressInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && currentSuggestions.length > 0) {
+      event.preventDefault();
+      chooseSuggestion(currentSuggestions[0]);
+    } else if (event.key === "ArrowDown") {
+      event.preventDefault();
+      addressSuggestions.querySelector(".address-suggestion")?.focus();
+    }
+  });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && pickTarget) setPickTarget(null);
+    if (event.key !== "Escape") return;
+    if (sheetTarget) closeAddressSheet();
+    else if (pickTarget) setPickTarget(null);
   });
   map.on("click", (event) => {
     if (pickTarget) applyPick(event.lngLat.toArray());
@@ -1192,6 +1321,8 @@ export function setupRouting(map, {
       // Routes from an explicit start, which behaves as a custom start pin.
       route: (startLatLon, destinationLatLon) => {
         customStart = [startLatLon[1], startLatLon[0]];
+        startLabel = null;
+        destinationLabel = null;
         stops = [];
         destinationPoint = [destinationLatLon[1], destinationLatLon[0]];
         return planChanged();

@@ -750,3 +750,134 @@ body {
 .route-marker-destination svg {
   display: block;
 }
+
+.address-sheet {
+  display: grid;
+  gap: 6px;
+  padding: 4px 10px 10px;
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 4px;
+  background: rgb(23 27 29 / 97%);
+  color: #f4f3ed;
+  box-shadow: 0 3px 14px rgb(0 0 0 / 32%);
+  pointer-events: auto;
+}
+
+.address-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+#address-sheet-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+#address-sheet-close {
+  width: 44px;
+  height: 44px;
+  margin-right: -8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #c4cecc;
+  font: inherit;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+#address-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid rgb(255 255 255 / 24%);
+  border-radius: 4px;
+  background: #252d2e;
+  color: #f4f3ed;
+  font: inherit;
+  /* 16 px keeps mobile browsers from zooming the page on focus. */
+  font-size: 16px;
+}
+
+.address-suggestions {
+  display: grid;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  max-height: min(40vh, 360px);
+}
+
+.address-suggestions:empty,
+.address-sheet-status:empty {
+  display: none;
+}
+
+.address-suggestion {
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 0;
+  border-bottom: 1px solid rgb(255 255 255 / 8%);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.address-suggestion:last-child {
+  border-bottom: 0;
+}
+
+.address-suggestion:hover {
+  background: rgb(255 255 255 / 8%);
+}
+
+.address-sheet-status {
+  margin: 0;
+  color: #c4cecc;
+  font-size: 12px;
+}
+
+.address-sheet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+#address-tap-map,
+#address-use-location {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid rgb(255 255 255 / 22%);
+  border-radius: 4px;
+  background: #252d2e;
+  color: #f4f3ed;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#address-use-location {
+  border-color: rgb(255 189 74 / 55%);
+  color: #ffd27d;
+}
+
+#address-tap-map:hover,
+#address-use-location:hover,
+#address-sheet-close:hover {
+  background: #3a4546;
+}
+
+#address-input:focus-visible,
+.address-suggestion:focus-visible,
+#address-tap-map:focus-visible,
+#address-use-location:focus-visible,
+#address-sheet-close:focus-visible {
+  outline: 3px solid #53c7a2;
+  outline-offset: 1px;
+}

@@ -40,6 +40,19 @@
           <span class="route-slot-value">tap to set</span>
         </button>
       </nav>
+      <section id="address-sheet" class="address-sheet" aria-labelledby="address-sheet-title" hidden>
+        <div class="address-sheet-header">
+          <h2 id="address-sheet-title">Set destination</h2>
+          <button id="address-sheet-close" type="button" aria-label="Close">×</button>
+        </div>
+        <input id="address-input" type="search" placeholder="Type an address" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" aria-label="Type an address" aria-controls="address-suggestions">
+        <div id="address-suggestions" class="address-suggestions" aria-label="Address suggestions"></div>
+        <p id="address-sheet-status" class="address-sheet-status" role="status"></p>
+        <div class="address-sheet-actions">
+          <button id="address-tap-map" type="button">or tap the map</button>
+          <button id="address-use-location" type="button" hidden>Use my location</button>
+        </div>
+      </section>
       <div id="pick-banner" class="pick-banner" hidden>
         <span id="pick-banner-text" role="status"></span>
         <button id="pick-cancel" type="button">Cancel</button>

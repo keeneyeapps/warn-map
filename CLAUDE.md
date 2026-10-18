@@ -13,6 +13,7 @@
 - `css/app.css`: map and control styles.
 - `js/app.js`: app startup and the one-shot locate control.
 - `js/config.js`: public Supabase project URL and anon key.
+- `js/addresses.js`: typed-address matching over the on-device address index (never queried over the network).
 - `js/hazards.js`: read-only hazard polling, GeoJSON layers, and popups.
 - `js/map.js`: MapLibre, PMTiles, local theme assets, and map setup.
 - `vendor/`: locally served libraries, glyphs, and sprites.
