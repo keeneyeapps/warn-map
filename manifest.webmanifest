@@ -1,4 +1,5 @@
 {
+  "id": "/warn-map/",
   "name": "WARN Map",
   "short_name": "WARN Map",
   "start_url": "./",
@@ -7,6 +8,8 @@
   "orientation": "any",
   "background_color": "#171b1d",
   "theme_color": "#171b1d",
+  "prefer_related_applications": false,
+  "related_applications": [],
   "icons": [
     {
       "src": "./icons/icon-192.png",
