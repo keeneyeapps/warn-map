@@ -733,7 +733,7 @@ body {
   box-shadow: 0 3px 14px rgb(0 0 0 / 32%);
 }
 
-#fare-rate {
+.driver-tariff input {
   width: 140px;
   min-height: 36px;
   padding: 0 8px;
@@ -1016,4 +1016,105 @@ body {
 .route-alternative-label:focus-visible {
   border-color: #54dfb3;
   color: #ffffff;
+}
+
+.driver-settings h2 {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.driver-tariff,
+.driver-trips {
+  display: grid;
+  gap: 3px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgb(255 255 255 / 14%);
+}
+
+.driver-trips {
+  padding-top: 8px;
+}
+
+.driver-tariff label {
+  margin-top: 4px;
+}
+
+.driver-help {
+  margin: 0;
+  color: #b9c4c3;
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.driver-trip-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-weight: 400;
+}
+
+.driver-trip-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.driver-button {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid rgb(255 255 255 / 24%);
+  border-radius: 4px;
+  background: #252d2e;
+  color: #f4f3ed;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.driver-trip {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+  max-width: min(300px, calc(100vw - 32px));
+}
+
+.driver-trip-live,
+.driver-trip-summary {
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 4px;
+  background: rgb(23 27 29 / 96%);
+  color: #f4f3ed;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: pre-line;
+  box-shadow: 0 2px 12px rgb(0 0 0 / 28%);
+}
+
+.driver-trip-button {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid rgb(255 255 255 / 22%);
+  border-radius: 4px;
+  background: #ffd200;
+  color: #171b1d;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 2px 12px rgb(0 0 0 / 28%);
+}
+
+.driver-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.map-controls.is-settings-open {
+  z-index: 4;
 }

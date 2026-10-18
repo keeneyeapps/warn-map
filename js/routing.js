@@ -2,6 +2,7 @@ import * as maplibregl from "../vendor/maplibre-gl.js";
 import { loadAddressIndex, nearestNamedPlace, normaliseTokens, searchAddresses } from "./addresses.js";
 import { formatHazardAge, openHazardPopup } from "./hazards.js";
 import { hazardsAlongRoute } from "./route-hazards.js";
+import { fareFor, formatMoney, isDriverMode } from "./driver.js";
 import { region, regionFileUrl } from "./region.js";
 
 const SOURCE_ID = "computed-route";
@@ -20,7 +21,6 @@ const MIN_UNSHARED_SHARE = 0.25;
 const MAX_EXTRA_LENGTH = 0.4;
 const ALTERNATIVE_TAP_PX = 10;
 const HINT_KEY = "warn-map-route-hint-dismissed";
-const FARE_RATE_KEY = "warn-map-fare-rate";
 const ROUTE_PREFERENCE_KEY = "warn-map-route-preference";
 const ROUTE_PREFERENCES = { fastest: "Fastest", main: "Main roads", shortest: "Shortest" };
 const DEFAULT_ROUTE_PREFERENCE = "fastest";
@@ -181,7 +181,6 @@ export function setupRouting(map, {
   const hazardsList = document.querySelector("#route-hazards-list");
   const settingsToggle = document.querySelector("#settings-toggle");
   const settingsPanel = document.querySelector("#settings-panel");
-  const fareRateInput = document.querySelector("#fare-rate");
   const preferenceInputs = [...document.querySelectorAll('input[name="route-preference"]')];
   const appVersion = document.querySelector("#app-version");
   const slotStart = document.querySelector("#slot-start");
@@ -229,7 +228,6 @@ export function setupRouting(map, {
   const placeIndex = new Map();
   let dragState = null;
   let planRenderPending = false;
-  let fareRateText = "";
   let routePreference = DEFAULT_ROUTE_PREFERENCE;
   let activeRoute = null;
   // The route options for the current plan: the best route first, then any alternatives found.
@@ -335,12 +333,6 @@ export function setupRouting(map, {
     routeHint.hidden = false;
   }
 
-  try {
-    fareRateText = localStorage.getItem(FARE_RATE_KEY) ?? "";
-  } catch {
-    fareRateText = "";
-  }
-  fareRateInput.value = fareRateText;
 
   try {
     const stored = localStorage.getItem(ROUTE_PREFERENCE_KEY);
@@ -350,10 +342,6 @@ export function setupRouting(map, {
   }
   for (const input of preferenceInputs) input.checked = input.value === routePreference;
 
-  function fareRate() {
-    const rate = Number.parseFloat(fareRateText);
-    return Number.isFinite(rate) && rate > 0 ? rate : null;
-  }
 
   function hasPlan() {
     return Boolean(activeRoute || customStart || destinationPoint || stops.length > 0);
@@ -779,10 +767,10 @@ export function setupRouting(map, {
     return cumulative;
   }
 
+  // Driver mode only: the tariff fare for the route's displayed distance (no waiting time).
   function fareText(totalTenths) {
-    const rate = fareRate();
-    if (rate === null) return "";
-    return `Fare at $${rate.toFixed(2)}/mi: $${(Math.round(totalTenths * rate * 10) / 100).toFixed(2)}`;
+    if (!isDriverMode()) return "";
+    return `Fare ${formatMoney(fareFor(totalTenths / 10))}`;
   }
 
   // Smaller towns only appear in higher-zoom tiles, so keep every locality label seen so far.
@@ -1067,7 +1055,7 @@ export function setupRouting(map, {
     recomputeRouteHazards();
   }
 
-  function requestWorkerRoute(start, end, blockedPoints = [], penalizedEdges = []) {
+  function requestWorkerRoute(start, end, blockedPoints = [], penalizedEdges = [], preference = routePreference) {
     if (!validPoint(start) || !validPoint(end)) {
       return Promise.reject(new Error("Route coordinates are invalid."));
     }
@@ -1075,8 +1063,7 @@ export function setupRouting(map, {
     return new Promise((resolve, reject) => {
       pendingRequests.set(id, { resolve, reject });
       worker.postMessage({
-        type: "route", requestId: id, start, destination: end, blockedPoints, preference: routePreference,
-        penalizedEdges,
+        type: "route", requestId: id, start, destination: end, blockedPoints, preference, penalizedEdges,
       });
     });
   }
@@ -1590,10 +1577,9 @@ export function setupRouting(map, {
     const open = settingsPanel.hidden;
     settingsPanel.hidden = !open;
     settingsToggle.setAttribute("aria-expanded", String(open));
-    if (open) {
-      showAppVersion();
-      fareRateInput.focus();
-    }
+    // Open settings sit above the route panel, which would otherwise cover them when a route is showing.
+    settingsPanel.closest(".map-controls")?.classList.toggle("is-settings-open", open);
+    if (open) showAppVersion();
   });
 
   for (const input of preferenceInputs) {
@@ -1608,17 +1594,6 @@ export function setupRouting(map, {
       if (destinationPoint) planChanged();
     });
   }
-
-  fareRateInput.addEventListener("input", () => {
-    fareRateText = fareRateInput.value.trim();
-    try {
-      if (fareRateText) localStorage.setItem(FARE_RATE_KEY, fareRateText);
-      else localStorage.removeItem(FARE_RATE_KEY);
-    } catch {
-      // The rate still applies for this page if storage is unavailable.
-    }
-    renderPlan();
-  });
 
   map.on("idle", indexPlaces);
 
@@ -1725,5 +1700,13 @@ export function setupRouting(map, {
 
   renderRouteBar();
 
-  return { setHazards, onLocationFix };
+  return {
+    setHazards,
+    onLocationFix,
+    refreshPlan: () => renderPlan(),
+    // Road distance between two [lon, lat] points along the graph (shortest path), or null; used by the trip meter.
+    roadDistance: (from, to) => requestWorkerRoute(from, to, [], [], "shortest")
+      .then((result) => (result.route ? result.route.totalDistanceM : null)),
+    placeNameNear: (point) => nearestPlaceName(point),
+  };
 }

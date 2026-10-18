@@ -70,8 +70,6 @@
     </div>
     <div class="map-controls">
       <div id="settings-panel" class="settings-panel" hidden>
-        <label for="fare-rate">Rate per mile</label>
-        <input id="fare-rate" type="number" inputmode="decimal" min="0" step="0.01" placeholder="$ per mile" autocomplete="off">
         <fieldset id="route-preference" class="route-preference">
           <legend>Route by</legend>
           <label><input type="radio" name="route-preference" value="fastest"> Fastest</label>
@@ -80,7 +78,7 @@
         </fieldset>
         <section class="about-card" aria-labelledby="about-title">
           <h2 id="about-title">About WARN Map</h2>
-          <p>Version <span id="app-version">–</span></p>
+          <p id="app-version-line">Version <span id="app-version">–</span></p>
           <p>© 2026 Keen Eye Apps</p>
           <p class="about-notice">Required Notice: Copyright 2026 Keen Eye Apps (https://keeneyeapps.github.io). Licensed under PolyForm Noncommercial 1.0.0.</p>
           <p class="about-notice">Moose artwork © Luna Montgomery. All rights reserved; used by permission.</p>

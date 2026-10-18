@@ -1,11 +1,14 @@
 import * as maplibregl from "../vendor/maplibre-gl.js";
 import { REGION_FILE } from "./config.js";
+import { applyDriverQuery, setupDriverTools } from "./driver.js";
 import { startHazardLayer } from "./hazards.js";
 import { createMap } from "./map.js";
 import { setupRouting } from "./routing.js";
 
 const MOVING_SPEED_MS = 1.5;
 const MIN_COURSE_DISTANCE_M = 15;
+
+applyDriverQuery();
 
 const map = createMap("map");
 const locationStatus = document.querySelector("#location-status");
@@ -250,6 +253,22 @@ map.once("style.load", () => {
     requestLocation: requestCurrentPosition,
     refreshHazards: () => hazardLayer.refresh(),
   });
+  const driverTools = setupDriverTools({
+    settingsPanel: document.querySelector("#settings-panel"),
+    controls: document.querySelector(".map-controls"),
+    beforeControl: document.querySelector("#clear-route"),
+    versionLine: document.querySelector("#app-version-line"),
+    showToast,
+    routeDistance: routingController.roadDistance,
+    placeNameNear: routingController.placeNameNear,
+    // The screen already stays on while the page is visible; a trip re-requests it in case the system released it.
+    keepScreenOn: requestWakeLock,
+    onTariffChange: routingController.refreshPlan,
+  });
+  if (["localhost", "127.0.0.1", "[::1]"].includes(location.hostname)
+      && new URLSearchParams(location.search).get("test") === "1") {
+    globalThis.__WARN_DRIVER_TEST__ = driverTools;
+  }
 
   map.addSource("device-location", {
     type: "geojson",
