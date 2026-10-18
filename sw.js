@@ -1,11 +1,15 @@
 importScripts("./js/precache-list.js");
 
-const CACHE_NAME = "warn-map-shell-v20";
+const CACHE_NAME = "warn-map-shell-v21";
 const SCOPE_URL = new URL(self.registration.scope);
 const ASSET_URLS = self.WARN_PRECACHE_URLS.map((path) => new URL(path, SCOPE_URL).href);
 const ASSET_PATHS = new Set(ASSET_URLS.map((assetUrl) => new URL(assetUrl).pathname));
-// app.js registers this worker with ?region= set to config.js's REGION_FILE.
-const REGION_URL = new URL(new URL(self.location.href).searchParams.get("region"), SCOPE_URL).href;
+// app.js registers this worker with ?region= set to config.js's REGION_FILE. A page from before the region
+// pack registers plain sw.js; that copy installs the app shell alone, and the new shell's app.js then
+// registers the ?region= worker, which precaches the region data.
+const REGION_PARAM = new URL(self.location.href).searchParams.get("region");
+const REGION_URL = REGION_PARAM ? new URL(REGION_PARAM, SCOPE_URL).href : null;
+const NO_REGION_ASSETS = { precache: [], precachePaths: new Set(), graph: null, tilesPath: null };
 
 let regionAssetsPromise = null;
 
@@ -13,11 +17,12 @@ let regionAssetsPromise = null;
 // picked up without editing this worker: the region file and its small data files are precached, the road
 // graph is warmed at install and cached on first use, and tiles (range requests) always go to the network.
 function regionAssets() {
+  if (!REGION_URL) return Promise.resolve(NO_REGION_ASSETS);
   if (!regionAssetsPromise) {
     // This version's cache only, so an install never reads an older version's region file.
     regionAssetsPromise = caches.open(CACHE_NAME)
       .then((cache) => cache.match(REGION_URL))
-      .then((cached) => cached || fetch(REGION_URL))
+      .then((cached) => cached || fetch(REGION_URL, { cache: "reload" }))
       .then((response) => {
         if (!response.ok) throw new Error(`Region file request failed (${response.status})`);
         return response.json();
@@ -44,10 +49,12 @@ function regionAssets() {
 self.addEventListener("install", (event) => {
   event.waitUntil(
     Promise.all([caches.open(CACHE_NAME), regionAssets()])
-      .then(([cache, assets]) => cache.addAll([...ASSET_URLS, ...assets.precache])
+      // Bypass the HTTP cache (GitHub Pages allows 10 minutes) so a new version never stores an old file.
+      .then(([cache, assets]) => cache.addAll([...ASSET_URLS, ...assets.precache]
+        .map((url) => new Request(url, { cache: "reload" })))
         // Warm the road graph so routing works offline after one visit; a failure here
         // must not block install, because the fetch handler also caches it on first use.
-        .then(() => assets.graph && cache.add(assets.graph).catch(() => {})))
+        .then(() => assets.graph && cache.add(new Request(assets.graph, { cache: "reload" })).catch(() => {})))
       .then(() => self.skipWaiting()),
   );
 });
