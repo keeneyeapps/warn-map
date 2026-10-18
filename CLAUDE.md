@@ -18,4 +18,5 @@
 - `vendor/`: locally served libraries, glyphs, and sprites.
 - `tiles/kenai.pmtiles`: extracted Kenai Peninsula basemap.
 - `graph/kenai-roads.json`: offline road graph; rebuild with `tools/build_graph.py` from the ignored Geofabrik extract.
+- `addresses/kenai-addresses.json`: offline address index (street, number, unit, postal city, dispatch community, point only); rebuild with `tools/build_addresses.py --fetch`.
 - `docs/screenshots/`: local verification screenshots.

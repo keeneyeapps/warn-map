@@ -1,3 +1,4 @@
 node_modules/
 tools/*
 !tools/build_graph.py
+!tools/build_addresses.py
