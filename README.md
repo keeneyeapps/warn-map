@@ -30,7 +30,7 @@ After the chosen route, the router looks for up to two alternatives by searching
 
 From 900 px wide, the route bar, status strip, route panel, and hazards list sit in a 380 px left column and the map fills the rest; settings and About open as a sheet over the column. Narrower screens keep the phone layout.
 
-With a route showing, Print (beside Share) opens the browser's print dialog. The first page is the map as currently framed, with the route and its waypoints, under the title "WARN Map route" and the date; the next page lists the legs with their distances and the total, then the reported hazards along the route, then the OpenStreetMap attribution and the Borough address-data notice. Fare lines print only in driver mode. Both Letter and A4 fit; `docs/screenshots/print-sample.pdf` is a sample.
+With a route showing, Print (beside Share) opens the browser's print dialog. The first page is the map as currently framed, rendered at print time on an offscreen map in the Protomaps light theme (the on-screen map keeps its dark theme) with the route and its waypoints in colours that read on white, under the title "WARN Map route" and the date; the next page lists the legs with their distances and the total, then the reported hazards along the route, then the OpenStreetMap attribution and the Borough address-data notice. Fare lines print only in driver mode. Both Letter and A4 fit; `docs/screenshots/print-sample.pdf` is a sample.
 
 ## Driver tools
 

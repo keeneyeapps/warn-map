@@ -1,41 +1,104 @@
-// Route printing. MapLibre's WebGL canvas does not print, so at print time the framed map (route line included) is
-// copied to an image during a render, the waypoint badges are drawn onto it, and a print-only sheet is built from
-// the route plan and hazards list. The print stylesheet (css/app.css, @media print) shows only that sheet; it stays
-// (hidden on screen) until the next print replaces it, so printing again or to another paper size still works.
+// Route printing. MapLibre's WebGL canvas does not print, so at print time the route is rendered onto a hidden,
+// offscreen map in the Protomaps light theme (framed exactly like the on-screen map, which keeps its dark theme),
+// captured to an image with the waypoint badges drawn on, and a print-only sheet is built from the route plan and
+// hazards list. The print stylesheet (css/app.css, @media print) shows only that sheet; it stays (hidden on screen)
+// until the next print replaces it, so printing again or to another paper size still works.
+import * as maplibregl from "../vendor/maplibre-gl.js";
+import { basemapStyle } from "./map.js";
 import { region } from "./region.js";
 
 const SHEET_ID = "print-sheet";
+const RENDER_TIMEOUT_MS = 20000;
+// Colours that read on the light basemap and on paper.
+const PRINT_ROUTE = { casing: "#ffffff", line: "#0b6b4f" };
+const PRINT_BADGES = {
+  start: { fill: "#d9480f", text: "#ffffff" },
+  stop: { fill: "#343a40", text: "#ffffff" },
+  destination: { fill: "#0b6b4f", text: "#ffffff" },
+};
 
-function captureMap(map, waypoints) {
+function waitForIdle(map) {
   return new Promise((resolve) => {
-    map.once("render", () => {
-      const source = map.getCanvas();
-      const canvas = document.createElement("canvas");
-      canvas.width = source.width;
-      canvas.height = source.height;
-      const context = canvas.getContext("2d");
-      context.drawImage(source, 0, 0);
-      const scale = source.width / source.clientWidth;
-      for (const { point, badge, colour, text } of waypoints) {
-        const { x, y } = map.project(point);
-        const radius = 11 * scale;
-        context.beginPath();
-        context.arc(x * scale, y * scale, radius, 0, Math.PI * 2);
-        context.fillStyle = colour;
-        context.fill();
-        context.lineWidth = 2 * scale;
-        context.strokeStyle = "#171b1d";
-        context.stroke();
-        context.fillStyle = text;
-        context.font = `700 ${11 * scale}px "Noto Sans", "Segoe UI", sans-serif`;
-        context.textAlign = "center";
-        context.textBaseline = "middle";
-        context.fillText(badge, x * scale, y * scale + 0.5 * scale);
-      }
-      resolve(canvas.toDataURL("image/png"));
+    const timer = setTimeout(resolve, RENDER_TIMEOUT_MS);
+    map.once("idle", () => {
+      clearTimeout(timer);
+      resolve();
     });
-    map.triggerRepaint();
   });
+}
+
+// Renders the route on an offscreen light-theme map the same size and view as `map`; returns a PNG data URL.
+async function renderLightMap(map, routeGeometry, waypoints) {
+  const source = map.getContainer();
+  const container = document.createElement("div");
+  container.className = "print-render-map";
+  container.setAttribute("aria-hidden", "true");
+  container.style.width = `${source.clientWidth}px`;
+  container.style.height = `${source.clientHeight}px`;
+  document.body.append(container);
+  const printMap = new maplibregl.Map({
+    container,
+    style: basemapStyle("light"),
+    center: map.getCenter(),
+    zoom: map.getZoom(),
+    bearing: map.getBearing(),
+    pitch: map.getPitch(),
+    interactive: false,
+    attributionControl: false,
+    preserveDrawingBuffer: true,
+    fadeDuration: 0,
+    pixelRatio: Math.max(2, globalThis.devicePixelRatio || 1),
+  });
+  try {
+    await new Promise((resolve) => printMap.once("load", resolve));
+    printMap.addSource("print-route", {
+      type: "geojson",
+      data: { type: "Feature", geometry: { type: "LineString", coordinates: routeGeometry }, properties: {} },
+    });
+    printMap.addLayer({
+      id: "print-route-casing",
+      type: "line",
+      source: "print-route",
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": PRINT_ROUTE.casing, "line-width": 9 },
+    });
+    printMap.addLayer({
+      id: "print-route-line",
+      type: "line",
+      source: "print-route",
+      layout: { "line-cap": "round", "line-join": "round" },
+      paint: { "line-color": PRINT_ROUTE.line, "line-width": 5 },
+    });
+    await waitForIdle(printMap);
+
+    const canvas = printMap.getCanvas();
+    const output = document.createElement("canvas");
+    output.width = canvas.width;
+    output.height = canvas.height;
+    const context = output.getContext("2d");
+    context.drawImage(canvas, 0, 0);
+    const scale = canvas.width / canvas.clientWidth;
+    for (const { point, badge, kind } of waypoints) {
+      const colours = PRINT_BADGES[kind] || PRINT_BADGES.stop;
+      const { x, y } = printMap.project(point);
+      context.beginPath();
+      context.arc(x * scale, y * scale, 11 * scale, 0, Math.PI * 2);
+      context.fillStyle = colours.fill;
+      context.fill();
+      context.lineWidth = 2.5 * scale;
+      context.strokeStyle = "#ffffff";
+      context.stroke();
+      context.fillStyle = colours.text;
+      context.font = `700 ${11 * scale}px "Noto Sans", "Segoe UI", sans-serif`;
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText(badge, x * scale, y * scale + 0.5 * scale);
+    }
+    return output.toDataURL("image/png");
+  } finally {
+    printMap.remove();
+    container.remove();
+  }
 }
 
 function sanitisedCopy(element) {
@@ -57,11 +120,14 @@ function paragraph(text, className) {
 }
 
 /**
- * Builds the print sheet and opens the print dialog. `waypoints` are { point: [lon, lat], badge, colour, text };
- * `plan` and `hazardsList` are the live route plan and hazards list elements; `hazardsTitle` their heading text.
+ * Builds the print sheet and opens the print dialog. `routeGeometry` is the active route's [lon, lat] line;
+ * `waypoints` are { point: [lon, lat], badge, kind: "start" | "stop" | "destination" }; `plan` and `hazardsList`
+ * are the live route plan and hazards list elements; `hazardsTitle` their heading text.
  */
-export async function printRoute({ map, waypoints, plan, hazardsTitle, hazardsList, print = () => globalThis.print() }) {
-  const image = await captureMap(map, waypoints);
+export async function printRoute({
+  map, routeGeometry, waypoints, plan, hazardsTitle, hazardsList, print = () => globalThis.print(),
+}) {
+  const image = await renderLightMap(map, routeGeometry, waypoints);
   document.getElementById(SHEET_ID)?.remove();
 
   const sheet = document.createElement("section");

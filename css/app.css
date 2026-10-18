@@ -1172,11 +1172,20 @@ body {
   display: none;
 }
 
+/* The offscreen light-theme map rendered for printing: laid out at full size so WebGL draws it, never seen. */
+.print-render-map {
+  position: fixed;
+  top: 0;
+  left: -20000px;
+  pointer-events: none;
+}
+
 @media print {
   @page {
     margin: 12mm;
   }
 
+  :root,
   html,
   body {
     width: auto;
@@ -1185,6 +1194,7 @@ body {
     overflow: visible;
     background: #fff;
     color: #000;
+    color-scheme: light;
   }
 
   body > :not(.print-sheet) {

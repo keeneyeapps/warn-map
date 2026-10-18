@@ -6,33 +6,34 @@ const protocol = new globalThis.pmtiles.Protocol();
 maplibregl.addProtocol("pmtiles", protocol.tile);
 
 const sourceName = "protomaps";
-const theme = namedTheme("dark");
+
+/** The basemap style in a vendored Protomaps theme ("dark" on screen, "light" for printing). */
+export function basemapStyle(themeName) {
+  const vendorBase = new URL("../vendor/", import.meta.url).href;
+  const tiles = region.files.tiles;
+  return {
+    version: 8,
+    glyphs: `${vendorBase}fonts/{fontstack}/{range}.pbf`,
+    sprite: `${vendorBase}sprites/v4/${themeName}`,
+    sources: {
+      [sourceName]: {
+        type: "vector",
+        url: `pmtiles://${regionFileUrl("tiles").href}`,
+        attribution: tiles.attribution,
+        maxzoom: tiles.maxzoom,
+      },
+    },
+    layers: layers(sourceName, namedTheme(themeName), { lang: "en" }),
+  };
+}
 
 export function createMap(container) {
-  const vendorBase = new URL("../vendor/", import.meta.url).href;
-  const glyphs = `${vendorBase}fonts/{fontstack}/{range}.pbf`;
-  const sprite = `${vendorBase}sprites/v4/dark`;
-  const tiles = region.files.tiles;
-
   return new maplibregl.Map({
     container,
-    style: {
-      version: 8,
-      glyphs,
-      sprite,
-      sources: {
-        [sourceName]: {
-          type: "vector",
-          url: `pmtiles://${regionFileUrl("tiles").href}`,
-          attribution: tiles.attribution,
-          maxzoom: tiles.maxzoom,
-        },
-      },
-      layers: layers(sourceName, theme, { lang: "en" }),
-    },
+    style: basemapStyle("dark"),
     center: region.start.center,
     zoom: region.start.zoom,
-    maxZoom: tiles.maxzoom,
+    maxZoom: region.files.tiles.maxzoom,
     attributionControl: true,
   });
 }

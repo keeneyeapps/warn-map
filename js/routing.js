@@ -843,12 +843,13 @@ export function setupRouting(map, {
   function printCurrentRoute() {
     if (!legsAreCurrent() || !routeStartPoint) return;
     const waypoints = [
-      { point: routeStartPoint, badge: "S", colour: "#ffbd4a", text: "#171b1d" },
-      ...stops.map((stop, index) => ({ point: stop.point, badge: String(index + 1), colour: "#f4f3ed", text: "#171b1d" })),
-      { point: destinationPoint, badge: "D", colour: "#54dfb3", text: "#10211d" },
+      { point: routeStartPoint, badge: "S", kind: "start" },
+      ...stops.map((stop, index) => ({ point: stop.point, badge: String(index + 1), kind: "stop" })),
+      { point: destinationPoint, badge: "D", kind: "destination" },
     ];
     printRoute({
       map,
+      routeGeometry: activeRoute.geometry,
       waypoints,
       plan: planElement,
       hazardsTitle: hazardsTitle.textContent,
