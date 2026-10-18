@@ -8,6 +8,11 @@ const LINE_LAYER_ID = "computed-route-line";
 const HINT_KEY = "warn-map-route-hint-dismissed";
 const FARE_RATE_KEY = "warn-map-fare-rate";
 const METERS_PER_MILE = 1609.344;
+const PICK_PROMPTS = {
+  start: "Tap the map to set the start",
+  stop: "Tap the map to add a stop",
+  destination: "Tap the map to set the destination",
+};
 const PLACE_SEARCH_RADIUS_M = 12_000;
 const DESTINATION_FLAG_SVG = '<svg viewBox="0 0 22 28" width="22" height="28" aria-hidden="true">'
   + '<path d="M3 3v23" stroke="#171b1d" stroke-width="4" stroke-linecap="round"/>'
@@ -155,12 +160,19 @@ export function setupRouting(map, {
   const settingsToggle = document.querySelector("#settings-toggle");
   const settingsPanel = document.querySelector("#settings-panel");
   const fareRateInput = document.querySelector("#fare-rate");
+  const slotStart = document.querySelector("#slot-start");
+  const slotStops = document.querySelector("#slot-stops");
+  const slotDestination = document.querySelector("#slot-destination");
+  const pickBanner = document.querySelector("#pick-banner");
+  const pickBannerText = document.querySelector("#pick-banner-text");
+  const pickCancel = document.querySelector("#pick-cancel");
   const worker = new Worker(new URL("./routing-worker.js", import.meta.url), { type: "module" });
   const pendingRequests = new Map();
   let requestId = 0;
   let workerLoadTimeMs = null;
   let graphTransfer = null;
   let pendingPoint = null;
+  let pickTarget = null;
   let customStart = null;
   let stops = [];
   let nextStopId = 0;
@@ -326,6 +338,53 @@ export function setupRouting(map, {
     stopMarkers = stops.map((stop, index) => new maplibregl.Marker({
       element: markerElement("route-marker-stop", String(index + 1), `Stop ${index + 1}`),
     }).setLngLat(stop.point).addTo(map));
+    renderRouteBar();
+  }
+
+  function setSlot(slot, label, value, isSet) {
+    slot.querySelector(".route-slot-value").textContent = value;
+    slot.setAttribute("aria-label", `${label}: ${value}`);
+    slot.classList.toggle("is-set", isSet);
+  }
+
+  function renderRouteBar() {
+    setSlot(slotStart, "Start", customStart ? "Pin" : "My location", Boolean(customStart));
+    setSlot(slotStops, "Stops", stops.length === 0 ? "none" : String(stops.length), stops.length > 0);
+    setSlot(slotDestination, "Destination",
+      destinationPoint ? nearestPlaceName(destinationPoint) || "Set" : "tap to set",
+      Boolean(destinationPoint));
+    slotStart.setAttribute("aria-pressed", String(pickTarget === "start"));
+    slotStops.setAttribute("aria-pressed", String(pickTarget === "stop"));
+    slotDestination.setAttribute("aria-pressed", String(pickTarget === "destination"));
+  }
+
+  function setPickTarget(target) {
+    pickTarget = target;
+    pickBanner.hidden = !target;
+    pickBannerText.textContent = target ? PICK_PROMPTS[target] : "";
+    map.getCanvas().style.cursor = target ? "crosshair" : "";
+    if (target) {
+      pendingPoint = null;
+      routeMenu.hidden = true;
+    }
+    renderRouteBar();
+  }
+
+  function applyPick(point) {
+    const target = pickTarget;
+    setPickTarget(null);
+    if (target === "start") {
+      customStart = point;
+    } else if (target === "stop") {
+      nextStopId += 1;
+      stops.push({ id: nextStopId, point });
+    } else if (target === "destination") {
+      destinationPoint = point;
+    } else {
+      return;
+    }
+    dismissHint();
+    planChanged();
   }
 
   function closureKey(feature) {
@@ -857,6 +916,7 @@ export function setupRouting(map, {
     baseRouteDistanceM = 0;
     avoidClosures = [];
     clearAvoidNotice();
+    setPickTarget(null);
     updateMarkers();
     routeMenu.hidden = true;
     recomputeRouteHazards();
@@ -1039,6 +1099,26 @@ export function setupRouting(map, {
 
   clearRouteButton.addEventListener("click", () => clearRoute());
 
+  slotStart.addEventListener("click", () => {
+    if (customStart) {
+      setPickTarget(null);
+      useMyLocation();
+      return;
+    }
+    setPickTarget(pickTarget === "start" ? null : "start");
+  });
+  slotStops.addEventListener("click", () => setPickTarget(pickTarget === "stop" ? null : "stop"));
+  slotDestination.addEventListener("click", () => {
+    setPickTarget(pickTarget === "destination" ? null : "destination");
+  });
+  pickCancel.addEventListener("click", () => setPickTarget(null));
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && pickTarget) setPickTarget(null);
+  });
+  map.on("click", (event) => {
+    if (pickTarget) applyPick(event.lngLat.toArray());
+  });
+
   hazardsToggle.addEventListener("click", () => {
     const expanded = hazardsToggle.getAttribute("aria-expanded") !== "false";
     hazardsToggle.setAttribute("aria-expanded", String(!expanded));
@@ -1125,6 +1205,13 @@ export function setupRouting(map, {
         blockedPoints,
       ),
       routeLegs: () => legs.map((leg) => ({ ...leg })),
+      mapCenter: () => map.getCenter().toArray(),
+      mapBearing: () => map.getBearing(),
+      project: (latitudeLongitude) => {
+        const point = map.project([latitudeLongitude[1], latitudeLongitude[0]]);
+        const rect = map.getCanvas().getBoundingClientRect();
+        return [rect.left + point.x, rect.top + point.y];
+      },
       shareText: () => buildShareText(),
       routeRoads: () => (activeRoute ? routeRoadNames(activeRoute, Infinity) : []),
       workerLoadTime: () => workerLoadTimeMs,
@@ -1147,6 +1234,8 @@ export function setupRouting(map, {
       refreshHazards,
     });
   }
+
+  renderRouteBar();
 
   return { setHazards, onLocationFix };
 }

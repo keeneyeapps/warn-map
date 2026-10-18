@@ -24,6 +24,25 @@
         <span id="route-status"></span>
         <span id="route-hint" hidden>Tap and hold the map to route here.</span>
         <span id="wake-status">screen may sleep</span>
+        <span id="location-status" hidden></span>
+      </div>
+      <nav id="route-bar" class="route-bar" aria-label="Route">
+        <button id="slot-start" class="route-slot" type="button" aria-pressed="false" aria-label="Start: My location">
+          <span class="route-slot-label">Start</span>
+          <span class="route-slot-value">My location</span>
+        </button>
+        <button id="slot-stops" class="route-slot" type="button" aria-pressed="false" aria-label="Stops: none">
+          <span class="route-slot-label">Stops</span>
+          <span class="route-slot-value">none</span>
+        </button>
+        <button id="slot-destination" class="route-slot" type="button" aria-pressed="false" aria-label="Destination: tap to set">
+          <span class="route-slot-label">Destination</span>
+          <span class="route-slot-value">tap to set</span>
+        </button>
+      </nav>
+      <div id="pick-banner" class="pick-banner" hidden>
+        <span id="pick-banner-text" role="status"></span>
+        <button id="pick-cancel" type="button">Cancel</button>
       </div>
       <section id="route-hazards-panel" class="route-hazards-panel" aria-label="Route plan and hazards" hidden>
         <button id="route-hazards-toggle" class="route-hazards-toggle" type="button" aria-expanded="true" aria-controls="route-panel-body">
@@ -50,8 +69,7 @@
         <button id="add-stop" type="button">Add stop</button>
       </div>
       <button id="clear-route" type="button" hidden>Clear route</button>
-      <button id="locate" type="button" aria-label="Locate me">Locate me</button>
-      <p id="location-status" role="status" aria-live="polite"></p>
+      <button id="locate" type="button" aria-pressed="false">Locate me</button>
     </div>
   </body>
 </html>
