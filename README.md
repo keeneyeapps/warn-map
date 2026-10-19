@@ -84,7 +84,7 @@ No code changes are needed.
 
 ## Icon
 
-The app icons in `icons/` show the moose-head artwork, which is © Luna Montgomery, all rights reserved, used by permission; it is not covered by any licence for the rest of this repository (see `LICENSE`). The road pattern and hazard-stripe border are drawn by `tools/build_icons.py`, which composites the icons from the moose master kept in the Android repository: `python tools/build_icons.py --moose ../WARN/art/moose_head_master.png`.
+The app icons in `icons/` show the moose-head artwork, which is © Luna Montgomery, all rights reserved, used by permission; it is not covered by any licence for the rest of this repository (see `LICENSE`). The share page (`start.html`) also shows the full moose head as a faint background, `icons/home-moose.webp`, copied unchanged from the Android app's home screen (the same artwork and the same credit). The road pattern and hazard-stripe border are drawn by `tools/build_icons.py`, which composites the icons from the moose master kept in the Android repository: `python tools/build_icons.py --moose ../WARN/art/moose_head_master.png`.
 
 ## iOS notes
 
