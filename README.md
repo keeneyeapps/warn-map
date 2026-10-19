@@ -46,6 +46,8 @@ A trip meter and tariff for professional drivers is hidden: in normal use none o
 
 All tariff settings, the running trip, and saved trips (up to 200) stay in this browser's local storage on the device. Nothing about them is sent anywhere; a trip summary leaves the device only when the driver taps Share.
 
+For meter calibration, driver mode also keeps a GPS trace of the last 10 trips on the device: one row per GPS fix (time, position, accuracy, speed, distances, and why a fix was rejected, if it was), up to 20,000 rows per trip, separate from the trip list. It is never uploaded. A trip's entry in the list has Export trace, which saves a CSV file on the device when tapped, and Delete traces, which removes every trace; Clear all also removes them. The trip record keeps the exact distance and waiting seconds next to the rounded ones.
+
 ## Road graph
 
 `graph/kenai-roads.json` is a compact, offline road network for on-device routing. It is derived from OpenStreetMap data under the ODbL, downloaded from Geofabrik. To rebuild it, install pyosmium with `python -m pip install osmium`, then run `python tools/build_graph.py --region regions/kenai/region.json --fetch`, which downloads the region's extract (`files.graph.source`) to the ignored `tools/` folder and clips it to the bbox. Leave out `--fetch` to reuse an extract already downloaded.

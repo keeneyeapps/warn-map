@@ -1057,9 +1057,14 @@ body {
 
 .driver-trip-list li {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px 8px;
+}
+
+.driver-trip-list .driver-actions {
+  flex-wrap: wrap;
 }
 
 .driver-button {

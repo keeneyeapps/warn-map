@@ -2,6 +2,10 @@
 // mode is on (open the page once with ?driver, or tap the About version line 7 times); with it off, none of this UI
 // exists in the page. Every tariff value and trip record stays in this browser's localStorage.
 
+import {
+  appendRow, clearRunning, clearTraces, downloadTrace, loadRunning, loadTraces, newLog, saveRunning, storeTrace,
+} from "./trace.js";
+
 const DRIVER_MODE_KEY = "warn-map-driver-mode";
 const TRIP_KEY = "warn-map-trip-running";
 const TRIPS_KEY = "warn-map-trips";
@@ -177,11 +181,21 @@ export function setupDriverTools({
   let fixQueue = Promise.resolve();
   let watchId = null;
   let persistTimer = null;
+  let traceLog = newLog(); // one row per GPS fix of the running trip; see trace.js
+  let tracePersistedRows = -1;
 
   // ---- trip state ----
 
   function persistTrip() {
     writeStorage(TRIP_KEY, trip ? JSON.stringify(trip) : null);
+    if (!trip) {
+      clearRunning();
+      tracePersistedRows = -1;
+    } else if (traceLog.lines.length !== tracePersistedRows) {
+      // A full browser store costs the trace, never the trip: the result is deliberately not checked.
+      saveRunning(traceLog);
+      tracePersistedRows = traceLog.lines.length;
+    }
   }
 
   function tripFare(state = trip) {
@@ -191,26 +205,42 @@ export function setupDriverTools({
   async function acceptFix(position) {
     if (!trip) return;
     const { coords } = position;
-    if (!Number.isFinite(coords.latitude) || !Number.isFinite(coords.longitude)) return;
-    if (Number.isFinite(coords.accuracy) && coords.accuracy > MAX_ACCURACY_M) return;
-    const point = [coords.longitude, coords.latitude];
     const time = Number.isFinite(position.timestamp) ? position.timestamp : Date.now();
+    // The trace row for this fix, accepted or not (trace.js). Filled in as the fix is judged.
+    const row = {
+      t: (time - trip.startTime) / 1000, lat: coords.latitude, lon: coords.longitude,
+      accuracy: coords.accuracy, speed: coords.speed,
+    };
+    const reject = (reason) => {
+      row.reject = reason;
+      appendRow(traceLog, row);
+    };
+    if (!Number.isFinite(coords.latitude) || !Number.isFinite(coords.longitude)) return reject("no_position");
+    const point = [coords.longitude, coords.latitude];
     const last = trip.lastFix;
+    if (last) {
+      row.interval = (time - last.time) / 1000;
+      row.straight = haversineMeters(last.point, point);
+    }
+    if (Number.isFinite(coords.accuracy) && coords.accuracy > MAX_ACCURACY_M) return reject("low_accuracy");
     if (!last) {
       trip.lastFix = { point, time };
       if (!trip.startPlace) trip.startPlace = placeNameNear(point);
+      row.added = 0;
+      appendRow(traceLog, row);
       render();
       return;
     }
     const seconds = (time - last.time) / 1000;
-    if (seconds <= 0) return;
-    const straight = haversineMeters(last.point, point);
-    if (straight / seconds > MAX_SPEED_MS) return;
+    if (seconds <= 0) return reject("bad_time");
+    const straight = row.straight;
+    if (straight / seconds > MAX_SPEED_MS) return reject("speed_jump");
 
     // Road distance between the snapped fixes; a straight line when the snap gives no sensible road path.
     let meters = straight;
     try {
       const road = await routeDistance(last.point, point);
+      if (Number.isFinite(road)) row.road = road;
       if (Number.isFinite(road) && road <= Math.max(straight * 1.5, straight + 150)) meters = road;
     } catch {
       // Routing unavailable: keep the straight-line distance.
@@ -219,6 +249,7 @@ export function setupDriverTools({
 
     const speed = Number.isFinite(coords.speed) && coords.speed >= 0 ? coords.speed : straight / seconds;
     const slow = speed < trip.waitBelowMs;
+    const waitBefore = trip.waitSeconds;
     if (slow) {
       trip.slowSeconds.push(seconds);
       if (trip.slowSeconds.length === SLOW_STREAK) {
@@ -231,6 +262,10 @@ export function setupDriverTools({
     }
     trip.meters += meters;
     trip.lastFix = { point, time };
+    row.added = meters;
+    row.slow = slow;
+    row.waitAdded = trip.waitSeconds - waitBefore;
+    appendRow(traceLog, row);
     render();
   }
 
@@ -267,6 +302,8 @@ export function setupDriverTools({
       lastFix: null,
       startPlace: null,
     };
+    traceLog = newLog();
+    tracePersistedRows = -1;
     persistTrip();
     startWatching();
     render();
@@ -281,11 +318,19 @@ export function setupDriverTools({
       endTime: Date.now(),
       miles: Math.round((trip.meters / METERS_PER_MILE) * 100) / 100,
       waitSeconds: Math.round(trip.waitSeconds),
+      // The exact figures behind the rounded ones above, so rounding cannot lose them again.
+      metersExact: trip.meters,
+      waitSecondsExact: trip.waitSeconds,
       fare: tripFare(),
       startPlace: trip.startPlace || null,
       endPlace: trip.lastFix ? placeNameNear(trip.lastFix.point) : null,
     };
+    // The trip record first, so a full browser store can cost the trace but never the trip.
     writeStorage(TRIPS_KEY, JSON.stringify([record, ...readTrips()].slice(0, MAX_TRIPS)));
+    if (traceLog.lines.length > 0 && !storeTrace(record.startTime, traceLog).saved) {
+      showToast("Trace not saved: browser storage is full");
+    }
+    traceLog = newLog();
     trip = null;
     persistTrip();
     render(record);
@@ -318,10 +363,34 @@ export function setupDriverTools({
     const section = element("section", { className: "driver-trips", id: "driver-trips" });
     const list = element("ol", { className: "driver-trip-list" });
     const trips = readTrips();
-    section.append(element("h2", { textContent: `Trips (${trips.length})` }));
+    const traces = new Map(loadTraces().map((trace) => [trace.startTime, trace]));
+    section.append(
+      element("h2", { textContent: `Trips (${trips.length})` }),
+      element("p", {
+        className: "driver-help", id: "driver-trace-note",
+        textContent: "A GPS trace of your last 10 trips is kept on this device for meter calibration. It is never "
+          + "uploaded. Export a trace to a file, or delete all traces, from a trip below.",
+      }),
+    );
     for (const saved of trips) {
       const share = element("button", { type: "button", className: "driver-button", textContent: "Share" });
       share.addEventListener("click", () => shareText(tripShareText(saved), share));
+      const actions = [share];
+      const trace = traces.get(saved.startTime);
+      if (trace) {
+        const exportTrace = element("button", {
+          type: "button", className: "driver-button driver-export-trace", textContent: "Export trace",
+        });
+        exportTrace.addEventListener("click", () => downloadTrace(trace));
+        const deleteTraces = element("button", {
+          type: "button", className: "driver-button driver-delete-traces", textContent: "Delete traces",
+        });
+        deleteTraces.addEventListener("click", () => {
+          clearTraces();
+          render();
+        });
+        actions.push(exportTrace, deleteTraces);
+      }
       const when = new Date(saved.startTime).toLocaleString(undefined, {
         month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
       });
@@ -330,13 +399,14 @@ export function setupDriverTools({
           className: "driver-trip-text",
           textContent: `${when} · ${saved.miles.toFixed(1)} mi · wait ${formatWait(saved.waitSeconds)} · ${formatMoney(saved.fare)}`,
         }),
-        share,
+        element("div", { className: "driver-actions" }, actions),
       ]));
     }
     if (trips.length > 0) {
       const clear = element("button", { type: "button", className: "driver-button", textContent: "Clear all" });
       clear.addEventListener("click", () => {
         writeStorage(TRIPS_KEY, null);
+        clearTraces(); // a trip's trace goes with the trip
         render();
       });
       section.append(list, clear);
@@ -424,6 +494,8 @@ export function setupDriverTools({
       const saved = JSON.parse(readStorage(TRIP_KEY) ?? "null");
       if (saved && Number.isFinite(saved.meters) && Number.isFinite(saved.waitSeconds)) {
         trip = { slowSeconds: [], lastFix: null, startPlace: null, ...saved };
+        traceLog = loadRunning() ?? newLog();
+        tracePersistedRows = traceLog.lines.length;
         startWatching();
       }
     } catch {
@@ -437,6 +509,8 @@ export function setupDriverTools({
 
   return {
     // For tests on localhost only (see routing's __WARN_MAP_TEST__): the live trip totals.
-    tripState: () => (trip ? { meters: trip.meters, waitSeconds: trip.waitSeconds, fare: tripFare() } : null),
+    tripState: () => (trip
+      ? { meters: trip.meters, waitSeconds: trip.waitSeconds, fare: tripFare(), traceRows: traceLog.lines.length }
+      : null),
   };
 }

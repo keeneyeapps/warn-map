@@ -63,6 +63,7 @@ not a write in this sense.
 - `js/report.js`: placeholder for WARN Drive reporting; the only module that may ever write, loaded by the future `drive.html` only.
 - `js/print.js`: route printing; captures the map canvas at print time and builds the print-only sheet (`@media print` in `css/app.css`).
 - `js/driver.js`: driver tools (tariff, planner fare, trip meter, saved trips). Hidden unless driver mode is on (`?driver` once, or 7 taps on the About version line); with it off, no fare, tariff, or trip UI may exist in the DOM. Tariff and trip data stay in localStorage only.
+- `js/trace.js`: the per-trip GPS trace, used by `driver.js` only. One CSV row per fix the trip meter saw (accepted or rejected, with the reject reason, the straight and snapped metres, metres added and wait added), for calibrating the meter against a real cab meter. The last 10 trips, at most 20,000 rows each, are kept in localStorage on the device (`warn-map-traces`, the running trip in `warn-map-trace-running`), apart from the 200-trip list. It is never uploaded or sent anywhere. It leaves the device only when the driver taps "Export trace" (a CSV saved locally); "Delete traces" removes all of them, and "Clear all" trips removes them too. The note saying so is in driver mode's Trips section, above the About card; the About card itself stays free of trip wording. The trip record also keeps the exact unrounded distance (`metersExact`) and wait (`waitSecondsExact`) beside the rounded figures. A change to what the trace stores needs the privacy re-read: the published policy page (keeneyeapps.github.io/warn/privacy.html) does not yet mention trip traces. [GAP] it is in another repo and has not been edited.
 - `js/map.js`: MapLibre, PMTiles, local theme assets, and map setup.
 - `vendor/`: locally served libraries, glyphs, and sprites.
 - `regions/kenai/region.json`: the Kenai region pack.
@@ -74,5 +75,6 @@ not a write in this sense.
 - `icons/`: app icons built by `tools/build_icons.py` from Luna Montgomery's moose-head master (kept in the Android repo). The moose artwork is © Luna Montgomery, all rights reserved, used by permission; see `LICENSE`. Never copy the master or the artwork into other assets without that permission.
 - `LICENSE`: PolyForm Noncommercial 1.0.0 for the code (the same licence and Required Notice wording as the Android WARN repo), then the artwork Required Notice and the data notices. Keep the Required Notice lines identical in LICENSE, README.md, and the About card in index.html.
 - About card (behind the gear): its version is read from the service worker's cache name, so bumping `CACHE_NAME` in `sw.js` is the only version bump.
-- `tests/`: the Playwright browser suite. `python testsun_all.py` runs it (about six minutes); output goes to the git-ignored `tests/out/`. See `tests/README.md`. Run it before committing page or module changes.
+- `tests/`: the Playwright browser suite. `python tests
+un_all.py` runs it (about six minutes); output goes to the git-ignored `tests/out/`. See `tests/README.md`. Run it before committing page or module changes.
 - `docs/screenshots/`: local verification screenshots.
