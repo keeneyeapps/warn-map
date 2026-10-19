@@ -27,7 +27,7 @@ export const TARIFF_FIELDS = [
   { key: "ratePerMile", storage: "warn-map-fare-rate", label: "Rate per mile", unit: "$", fallback: 2.80,
     help: "Distance charge; one increment every increment ÷ rate miles." },
   { key: "waitPerMinute", storage: "warn-map-tariff-wait-rate", label: "Wait rate per minute", unit: "$",
-    fallback: 0.50, help: "Waiting charge; one increment every increment ÷ rate minutes." },
+    fallback: 0.50, help: "Waiting charge, per full minute of cumulative waiting; partial minutes are not charged." },
   { key: "waitBelowMph", storage: "warn-map-tariff-wait-below", label: "Waiting below", unit: "mph", fallback: 12,
     help: "Time counts as waiting below this speed, after 3 slow fixes in a row." },
 ];
@@ -76,19 +76,26 @@ export function tariff() {
 }
 
 /**
- * Fare = start + increment x units, units = round-half-up(miles / distance unit + wait seconds / time unit), where
- * a distance unit is increment / rate per mile (miles) and a time unit is increment / wait rate (minutes).
+ * Fare, after a cab meter: start + increment x distance steps + wait rate x whole minutes of cumulative wait.
+ * A distance step is increment / rate per mile (1/14 mile by default), the miles rounded half-up to a whole step.
+ * Wait is the trip's total waiting seconds, rounded to whole seconds (as the trip record stores them), floored to
+ * whole minutes: a partial minute is not charged, and stops do not restart the count. Wait takes no part in the
+ * step rounding.
  */
-export function fareUnits(miles, waitSeconds = 0, rates = tariff()) {
+export function distanceUnits(miles, rates = tariff()) {
   const distanceUnitMiles = rates.increment / rates.ratePerMile;
-  const timeUnitSeconds = (rates.increment / rates.waitPerMinute) * 60;
-  const exact = miles / distanceUnitMiles + waitSeconds / timeUnitSeconds;
   // Half-up, with a tolerance so 3.4999999999 from binary arithmetic still counts as 3.5.
-  return Math.floor(exact + 0.5 + 1e-9);
+  return Math.floor(miles / distanceUnitMiles + 0.5 + 1e-9);
+}
+
+export function waitMinutes(waitSeconds) {
+  return Math.floor(Math.round(waitSeconds) / 60);
 }
 
 export function fareFor(miles, waitSeconds = 0, rates = tariff()) {
-  const cents = Math.round((rates.start + rates.increment * fareUnits(miles, waitSeconds, rates)) * 100);
+  const cents = Math.round(rates.start * 100)
+    + Math.round(rates.increment * 100) * distanceUnits(miles, rates)
+    + Math.round(rates.waitPerMinute * 100) * waitMinutes(waitSeconds);
   return cents / 100;
 }
 

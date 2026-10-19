@@ -141,19 +141,29 @@ def main():
             page.screenshot(path=os.path.join(SHOTS, "step8-tariff.png"))
             page.locator("#settings-toggle").click()
 
-            # 4. The formula, including exact half units (which round up).
+            # 4. The formula, after a cab meter: 1/14-mile steps (half-up) plus $0.50 per full cumulative minute of wait.
             out["formula"] = page.evaluate("""async () => {
               const d = await import("./js/driver.js");
-              const t = d.tariff();
-              return { tariff: t,
-                       units_0_25mi: d.fareUnits(0.25, 0), fare_0_25mi: d.fareFor(0.25, 0),
-                       units_wait_180: d.fareUnits(0, 180), fare_wait_180: d.fareFor(0, 180),
-                       units_both: d.fareUnits(0.25, 180), fare_both: d.fareFor(0.25, 180) };
+              const fixtures = [
+                [26.0714, 0], [6.84, 72], [26.3, 56], [26.25, 56], [26.2975, 56],
+                [0, 59], [0, 60], [0, 119], [0, 120], [0.25, 0], [0, 180], [0.25, 180],
+              ];
+              return { tariff: d.tariff(), steps_0_25mi: d.distanceUnits(0.25), minutes_180: d.waitMinutes(180),
+                       fares: fixtures.map(([m, w]) => [m, w, d.fareFor(m, w)]) };
             }""")
             f = out["formula"]
-            check(f["units_0_25mi"] == 4 and abs(f["fare_0_25mi"] - 4.55) < 1e-9, "0.25 mi = 3.5 units -> 4 -> $4.55")
-            check(f["units_wait_180"] == 8 and abs(f["fare_wait_180"] - 5.35) < 1e-9, "180 s = 7.5 units -> 8 -> $5.35")
-            check(f["units_both"] == 11 and abs(f["fare_both"] - 5.95) < 1e-9, "3.5 + 7.5 = 11 units -> $5.95")
+            fare = {(m, w): v for m, w, v in f["fares"]}
+            close = lambda a, b: abs(a - b) < 1e-9
+            check(f["steps_0_25mi"] == 4 and close(fare[(0.25, 0)], 4.55), "0.25 mi = 3.5 steps -> 4 -> $4.55")
+            check(f["minutes_180"] == 3 and close(fare[(0, 180)], 5.25), "180 s = 3 full minutes -> $1.50 -> $5.25")
+            check(close(fare[(0.25, 180)], 6.05), "0.25 mi + 180 s -> 4 steps + 3 minutes -> $6.05")
+            # Regression fixtures from real trips, default tariff.
+            check(close(fare[(26.0714, 0)], 76.75), "iCabbi 26.0714 mi, no wait -> $76.75")
+            check(close(fare[(6.84, 72)], 23.45), "iCabbi 6.84 mi, 72 s wait (one full minute) -> $23.45")
+            check(all(close(fare[(m, 56)], 77.35) for m in (26.3, 26.25, 26.2975)),
+                  "the 26.3 mi, 56 s trip -> $77.35 (the app's distance over-read stays visible)")
+            for seconds, extra in ((59, 0.0), (60, 0.5), (119, 0.5), (120, 1.0)):
+                check(close(fare[(0, seconds)], 3.75 + extra), f"pure wait {seconds} s -> ${extra:.2f}")
 
             # 5. A trip: 16 fixes along the Spur plus a 3-minute stop (4 fixes), with a reload in the middle.
             page.evaluate("([s, d]) => window.__WARN_MAP_TEST__.route(s, d)", [KENAI, SOLDOTNA])

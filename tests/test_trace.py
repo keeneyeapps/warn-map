@@ -279,6 +279,7 @@ def main():
             # 7. Storage full: the trace is lost, the trip is not, and the meter keeps working.
             page.evaluate("""() => {
               const real = Storage.prototype.setItem;
+              window.__realSetItem = real;
               Storage.prototype.setItem = function (key, value) {
                 if (String(key).startsWith("warn-map-trace")) throw new DOMException("full", "QuotaExceededError");
                 return real.call(this, key, value);
@@ -303,7 +304,7 @@ def main():
             page.locator(".driver-trip .driver-button", has_text="Dismiss").click()
 
             # 8. Clear all trips takes the traces with it.
-            page.evaluate("""() => { delete Storage.prototype.setItem; }""")
+            page.evaluate("""() => { Storage.prototype.setItem = window.__realSetItem; }""")
             page.evaluate("""async () => {
               const t = await import("./js/trace.js");
               const log = t.newLog(); t.appendRow(log, { t: 0, lat: 60.1, lon: -151.1 });
@@ -311,8 +312,41 @@ def main():
             }""")
             page.locator("#settings-toggle").click()
             page.locator("#settings-toggle").click()
+            check(page.evaluate("() => localStorage.getItem('warn-map-traces') !== null"), "a trace is stored before Clear all")
             page.locator(".driver-trips .driver-button", has_text="Clear all").click()
             check(page.evaluate("() => localStorage.getItem('warn-map-traces')") is None, "Clear all trips also clears the traces")
+
+            # 9. Cab-meter wait billing on simulated trips: five stops each, cumulative wait floored to whole minutes.
+            #    (Stops do not restart the count: five 40 s stops are 200 s = 3 minutes, not zero.)
+            table = []
+            for seconds, minutes in ((10, 0), (13, 1), (25, 2), (40, 3)):
+                points = [point_at(line, 120 + i * 500) for i in range(11)]
+                fixes, clock = [], int(time.time() * 1000)
+                for i, point in enumerate(points):
+                    if i > 0:
+                        clock += int(hav(points[i - 1], point) / 20 * 1000)
+                    fixes.append({"coords": {"latitude": point[1], "longitude": point[0], "speed": 20 if i else 0}, "timestamp": clock})
+                    if i in (1, 3, 5, 7, 9):
+                        for k in range(1, seconds + 1):
+                            fixes.append({"coords": {"latitude": point[1], "longitude": point[0], "speed": 0}, "timestamp": clock + 1000 * k})
+                        clock += 1000 * seconds
+                page.locator("#start-trip").click()
+                page.evaluate("(all) => { for (const fix of all) window.__emitFix(fix); }", fixes)
+                page.wait_for_function("(n) => window.__WARN_DRIVER_TEST__.tripState().traceRows === n", arg=len(fixes), timeout=60000)
+                state = page.evaluate("() => window.__WARN_DRIVER_TEST__.tripState()")
+                distance_only = page.evaluate("async (m) => (await import('./js/driver.js')).fareFor(m / 1609.344, 0)", state["meters"])
+                wait_charge = round(state["fare"] - distance_only, 2)
+                table.append({"stops": f"5 x {seconds} s", "wait s": round(state["waitSeconds"], 1), "wait charge": wait_charge,
+                              "fare": state["fare"]})
+                check(abs(state["waitSeconds"] - 5 * seconds) <= 1, f"5 x {seconds} s stops: about {5 * seconds} s of cumulative wait")
+                check(abs(wait_charge - 0.5 * minutes) < 1e-9, f"5 x {seconds} s stops: {minutes} full minute(s) -> ${0.5 * minutes:.2f} wait")
+                page.locator("#end-trip").click()
+                page.locator("#driver-trip-summary").wait_for(timeout=10000)
+                saved = page.evaluate("() => JSON.parse(localStorage.getItem('warn-map-trips'))[0]")
+                check(abs(saved["fare"] - state["fare"]) < 1e-9, f"5 x {seconds} s stops: the saved fare equals the live fare")
+                check(f"${state['fare']:.2f}" in page.locator("#driver-trip-summary").inner_text(), f"5 x {seconds} s stops: the summary shows the fare")
+                page.locator(".driver-trip .driver-button", has_text="Dismiss").click()
+            out["wait table"] = table
             browser.close()
     finally:
         proc.terminate()
