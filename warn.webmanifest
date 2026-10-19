@@ -3,7 +3,7 @@
   "name": "WARN Drive",
   "short_name": "WARN Drive",
   "start_url": "./warn.html",
-  "scope": "./",
+  "scope": "./warn.html",
   "display": "standalone",
   "orientation": "any",
   "background_color": "#171b1d",

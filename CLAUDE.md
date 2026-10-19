@@ -39,7 +39,7 @@ not a write in this sense. A new shared module must not import report.js; anythi
 - `js/region.js`: loads the region pack at startup; other modules take paths, bbox, and start view from it.
 - `js/addresses.js`: typed-address and named-place matching over the on-device address and places indexes (never queried over the network).
 - `start.html`: the public entry point to share (two cards: WARN Map and WARN Drive, plus a Share button). Static, no manifest, never installable. The root (`index.html`) stays the Map because installed phones start there. It must not mention driver mode, tariffs, or fleet features.
-- `warn.html` / `warn.webmanifest`: WARN Drive, the same shell as `index.html` under its own name and manifest.
+- `warn.html` / `warn.webmanifest`: WARN Drive, the same shell as `index.html` under its own name and manifest. Its manifest scope is `./warn.html` only: a scope of `./` would contain the Map's start_url, and Chrome would open Map links in an installed Drive. The Map keeps scope `./`.
 - `js/hazards.js`: read-only hazard polling and GeoJSON layers; its popups are hazard cards.
 - `js/cards.js`: hazard cards after the Android card (colour band, name, distance, age, confirmations; a disabled row for the three action buttons).
 - `js/alerts.js`: spoken alerts while following (cone, 0.5 mi, once per 20 min, mute); wording after Android's AlertWording and SpokenAgePolicy.
