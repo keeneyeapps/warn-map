@@ -1,6 +1,6 @@
 importScripts("./js/precache-list.js");
 
-const CACHE_NAME = "warn-map-shell-v31";
+const CACHE_NAME = "warn-map-shell-v32";
 const SCOPE_URL = new URL(self.registration.scope);
 const ASSET_URLS = self.WARN_PRECACHE_URLS.map((path) => new URL(path, SCOPE_URL).href);
 const ASSET_PATHS = new Set(ASSET_URLS.map((assetUrl) => new URL(assetUrl).pathname));
@@ -99,7 +99,7 @@ self.addEventListener("fetch", (event) => {
   if (requestUrl.origin !== SCOPE_URL.origin || !requestUrl.pathname.startsWith(SCOPE_URL.pathname)) return;
 
   if (request.mode === "navigate") {
-    // Each page from its own cached copy (warn.html is WARN Drive); anything else in scope is the map page.
+    // Each page from its own cached copy (warn.html is WARN Alerts); anything else in scope is the map page.
     const page = ASSET_PATHS.has(requestUrl.pathname) && requestUrl.pathname.endsWith(".html")
       ? requestUrl.pathname
       : new URL("index.html", SCOPE_URL).pathname;

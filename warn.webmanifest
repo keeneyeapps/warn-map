@@ -1,7 +1,7 @@
 {
   "id": "/warn-map/warn",
-  "name": "WARN Drive",
-  "short_name": "WARN Drive",
+  "name": "WARN Alerts",
+  "short_name": "WARN Alerts",
   "start_url": "./warn.html",
   "scope": "./warn.html",
   "display": "standalone",

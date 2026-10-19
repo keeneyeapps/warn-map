@@ -2,9 +2,11 @@ WARN Map is a public, read-only PWA for viewing current WARN road hazards on a m
 
 The app is read-only and may only query the WARN Supabase `public_hazards` view using its anon key. Browser geolocation never leaves the device; used only by the map and on-device routing. All runtime assets and tiles are self-hosted, there are no CDNs, and there is no build step.
 
-## Two pages
+## The family of pages
 
-`index.html` is WARN Map, read-only forever. `warn.html` is WARN Drive: the same shell and modules under its own name and manifest (`warn.webmanifest`), the page that will later gain reporting through `js/report.js`, the only module that may ever write. Both show hazard cards and speak alerts.
+`index.html` is WARN Map, the trunk: a plain map with search, routes, hazards as plain popups, and the trip meter behind driver mode. It has no hazard cards, no spoken alerts and no report inputs, because on the tablets the Android overlay app does the alerting and a map that also spoke would double up with it. Every future UI branches from the Map.
+
+`warn.html` is WARN Alerts (working name): the Map plus hazard cards and spoken alerts, read-only, under its own name and manifest (`warn.webmanifest`). `drive.html`, WARN Drive, does not exist yet; it will add the report inputs through `js/report.js`, the only module that may ever write.
 
 Hazard cards follow the Android app's card: a category colour band, the hazard's name, its distance, when it was last seen, and its confirmation count. The Confirm / Mute / Clear row is a disabled placeholder until reporting exists. While following, a hazard within ±30° of the direction of travel and within 0.5 mi gets its card at the top of the screen and one spoken sentence ("Caution, Moose reported 0.4 miles away, last seen 5 minutes ago."), at most once every 20 minutes; pedestrians and wildlife are "Caution", everything else "Note". Wording follows the Android app's AlertWording and SpokenAgePolicy, so distances read "away" (not "ahead") until the Android heading calibration flag is on, and only the types Android lets say their age do. The Voice button in the status strip mutes speech only; cards still show.
 

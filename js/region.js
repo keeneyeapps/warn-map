@@ -17,6 +17,6 @@ export function regionFileUrl(name) {
   return path ? new URL(path, APP_ROOT) : null;
 }
 
-// Each page names its app on <html data-app-name> (WARN Map or WARN Drive).
+// Each page names its app on <html data-app-name> (WARN Map, WARN Alerts, or the future WARN Drive).
 document.title = `${document.documentElement.dataset.appName || "WARN Map"} | ${region.name}`;
 document.querySelector("#map")?.setAttribute("aria-label", `Map of the ${region.name}`);

@@ -1,5 +1,4 @@
 import * as maplibregl from "../vendor/maplibre-gl.js";
-import { openHazardCard } from "./cards.js";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./config.js";
 
 const SOURCE_ID = "live-hazards";
@@ -239,8 +238,45 @@ function formatElapsed(milliseconds) {
   return `${Math.floor(minutes / 60)} h ${minutes % 60} min ago`;
 }
 
+function escapeHtml(value) {
+  return value.replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[character]);
+}
+
+function popupContent(properties, now) {
+  const lines = [
+    `<p>${escapeHtml(formatHazardAge(properties.created_at, now))}</p>`,
+  ];
+  if (properties.confirmation_count > 0) {
+    lines.push(`<p>${properties.confirmation_count} confirmations</p>`);
+  }
+  if (properties.category === "DELAY" && properties.delay_transit_s > 0) {
+    const minutes = Math.ceil(properties.delay_transit_s / 60);
+    lines.push(`<p>At least ${minutes} min</p>`);
+  }
+
+  return `<article class="hazard-popup"><h2>${escapeHtml(properties.title)}</h2><p class="hazard-popup-category">${escapeHtml(properties.category_label)}</p>${lines.join("")}</article>`;
+}
+
+// The Map's plain popup. An alerts page replaces it with a hazard card through setHazardPopupRenderer after it
+// has loaded cards.js; the Map itself never loads cards.js (CLAUDE.md, "Family tree").
+let popupRenderer = null;
+
+export function setHazardPopupRenderer(renderer) {
+  popupRenderer = typeof renderer === "function" ? renderer : null;
+}
+
 export function openHazardPopup(map, properties, coordinate) {
-  return openHazardCard(map, properties, coordinate);
+  if (popupRenderer) return popupRenderer(map, properties, coordinate);
+  return new maplibregl.Popup({ closeButton: true, maxWidth: "300px" })
+    .setLngLat(coordinate)
+    .setHTML(popupContent(properties, Date.now()))
+    .addTo(map);
 }
 
 export function startHazardLayer(map, { onHazardsUpdate = () => {} } = {}) {

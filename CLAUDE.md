@@ -14,21 +14,38 @@
 ## Pages and modules
 
 <!--
-WHICH PAGE MAY LOAD WHICH MODULES. Both pages share one shell (keep their markup identical apart from title,
-data-app-name, manifest, and About heading), one service worker, and one module graph rooted at js/app.js.
+FAMILY TREE (2026-10-18). WARN Map (index.html) is the TRUNK and the base for every future UI (Master,
+enterprise, municipal). It has no hazard cards, no spoken alerts and no report inputs: on the tablets the
+Android overlay app does all alerting, and a Map that also spoke would double up with it. Future UIs branch
+from the Map and supply their own inputs and card styles.
 
-  index.html  WARN Map    read-only forever. Loads js/app.js and only what it imports: config, region, map,
-                          hazards (SELECT on public_hazards only), cards, alerts, routing, routing-worker,
-                          route-hazards, addresses, driver (localStorage only), print. It must NEVER load
-                          js/report.js or any module that writes to the WARN database, directly or indirectly.
-  warn.html   WARN Drive  everything index.html loads, plus (in a later step) js/report.js, the ONLY module that
-                          may write. report.js is an empty placeholder until then and no shared module may import it.
+Three public apps:
+  (a) WARN Map      index.html   the trunk. Plain map: search, routes, hazards as plain popups, the trip meter
+                                 behind driver mode. Loads js/app.js and only what it imports statically.
+  (b) WARN Alerts   warn.html    the middle app (working name). The Map plus cards.js and alerts.js. No inputs.
+                                 Its manifest id /warn-map/warn, start_url ./warn.html and scope ./warn.html
+                                 are fixed so the installed app updates in place.
+  (c) WARN Drive    drive.html   FUTURE, not yet created. Cards and voice plus the report inputs (js/report.js).
+
+Module rules:
+  - cards.js and alerts.js may be imported only by warn.html and drive.html. app.js loads them by dynamic
+    import only when <html data-app> is "alerts" or "drive"; no static import of either may appear anywhere
+    except alerts.js importing cards.js. hazards.js shows its own plain popup unless an alerts page installs
+    the card renderer through setHazardPopupRenderer.
+  - report.js may be imported only by drive.html. Nothing imports it today.
+  - index.html must never load cards.js, alerts.js or report.js, statically or dynamically, and must never
+    load anything that writes.
+  - The two pages share one shell: keep their markup identical apart from <html data-app / data-app-name>,
+    title, apple-mobile-web-app-title, manifest link, About heading, and the #alert-cards host (alerts pages
+    only). One service worker serves both.
 
 "Writes" means anything sent to a server other than the read-only hazard SELECT. localStorage on the device is
-not a write in this sense. A new shared module must not import report.js; anything that writes goes in report.js.
+not a write in this sense.
 -->
 
-- `index.html` (WARN Map) and `warn.html` (WARN Drive) load the same shared modules; only `warn.html` may ever load `js/report.js`, and `index.html` must never load anything that writes.
+- Family tree: `index.html` (WARN Map) is the trunk; `warn.html` (WARN Alerts, working name) adds `cards.js` and
+  `alerts.js`; the future `drive.html` (WARN Drive) adds `report.js`. `cards.js` and `alerts.js` only on
+  `warn.html` and `drive.html`; `report.js` only on `drive.html`; the Map loads none of them.
 
 ## Layout
 
@@ -38,12 +55,12 @@ not a write in this sense. A new shared module must not import report.js; anythi
 - `js/config.js`: public Supabase project URL, anon key, and `REGION_FILE` (which region pack to load).
 - `js/region.js`: loads the region pack at startup; other modules take paths, bbox, and start view from it.
 - `js/addresses.js`: typed-address and named-place matching over the on-device address and places indexes (never queried over the network).
-- `start.html`: the public entry point to share (two cards: WARN Map and WARN Drive, plus a Share button). Static, no manifest, never installable. The root (`index.html`) stays the Map because installed phones start there. It must not mention driver mode, tariffs, or fleet features.
-- `warn.html` / `warn.webmanifest`: WARN Drive, the same shell as `index.html` under its own name and manifest. Its manifest scope is `./warn.html` only: a scope of `./` would contain the Map's start_url, and Chrome would open Map links in an installed Drive. The Map keeps scope `./`.
-- `js/hazards.js`: read-only hazard polling and GeoJSON layers; its popups are hazard cards.
-- `js/cards.js`: hazard cards after the Android card (colour band, name, distance, age, confirmations; a disabled row for the three action buttons).
-- `js/alerts.js`: spoken alerts while following (cone, 0.5 mi, once per 20 min, mute); wording after Android's AlertWording and SpokenAgePolicy.
-- `js/report.js`: placeholder for WARN Drive reporting; the only module that may ever write, loaded by `warn.html` only.
+- `start.html`: the public entry point to share (two cards: WARN Map and WARN Alerts, plus a Share button). Static, no manifest, never installable. The root (`index.html`) stays the Map because installed phones start there. It must not mention driver mode, tariffs, or fleet features.
+- `warn.html` / `warn.webmanifest`: WARN Alerts (working name), the same shell as `index.html` under its own name and manifest, plus `#alert-cards` and `data-app="alerts"`. Its manifest scope is `./warn.html` only: a scope of `./` would contain the Map's start_url, and Chrome would open Map links in an installed Drive. The Map keeps scope `./`.
+- `js/hazards.js`: read-only hazard polling, GeoJSON layers, and the Map's plain popup (`setHazardPopupRenderer` lets an alerts page swap in a card).
+- `js/cards.js`: hazard cards after the Android card (colour band, name, distance, age, confirmations; a disabled row for the three action buttons). Alerts pages only.
+- `js/alerts.js`: spoken alerts while following (cone, 0.5 mi, once per 20 min, mute); wording after Android's AlertWording and SpokenAgePolicy. Alerts pages only.
+- `js/report.js`: placeholder for WARN Drive reporting; the only module that may ever write, loaded by the future `drive.html` only.
 - `js/print.js`: route printing; captures the map canvas at print time and builds the print-only sheet (`@media print` in `css/app.css`).
 - `js/driver.js`: driver tools (tariff, planner fare, trip meter, saved trips). Hidden unless driver mode is on (`?driver` once, or 7 taps on the About version line); with it off, no fare, tariff, or trip UI may exist in the DOM. Tariff and trip data stay in localStorage only.
 - `js/map.js`: MapLibre, PMTiles, local theme assets, and map setup.

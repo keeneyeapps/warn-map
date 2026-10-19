@@ -1,9 +1,7 @@
 import * as maplibregl from "../vendor/maplibre-gl.js";
-import { setupAlerts } from "./alerts.js";
-import { setCardLocationSource } from "./cards.js";
 import { REGION_FILE } from "./config.js";
 import { applyDriverQuery, setupDriverTools } from "./driver.js";
-import { startHazardLayer } from "./hazards.js";
+import { setHazardPopupRenderer, startHazardLayer } from "./hazards.js";
 import { createMap } from "./map.js";
 import { setupRouting } from "./routing.js";
 
@@ -11,7 +9,11 @@ const MOVING_SPEED_MS = 1.5;
 const MIN_COURSE_DISTANCE_M = 15;
 
 applyDriverQuery();
-setCardLocationSource(() => latestLocation);
+
+// Which app this page is (<html data-app>): "map" is the trunk and loads no cards, alerts, or inputs;
+// "alerts" (warn.html) and the future "drive" add cards.js and alerts.js here and nowhere else.
+const APP = document.documentElement.dataset.app || "map";
+const ALERT_APPS = new Set(["alerts", "drive"]);
 
 const map = createMap("map");
 const locationStatus = document.querySelector("#location-status");
@@ -21,6 +23,7 @@ let activeWakeLock = null;
 let latestLocation = null;
 let routingController = null;
 let alerts = null;
+let latestHazardFeatures = [];
 let watchId = null;
 let followMode = "off";
 let followPaused = false;
@@ -253,15 +256,24 @@ map.once("style.load", () => {
   let hazardLayer;
   hazardLayer = startHazardLayer(map, {
     onHazardsUpdate: (features) => {
+      latestHazardFeatures = features;
       routingController?.setHazards(features);
       alerts?.setHazards(features);
     },
   });
-  alerts = setupAlerts({
-    strip: document.querySelector("#hazard-status"),
-    cardHost: document.querySelector("#alert-cards"),
-    lastHazardPoll: () => hazardLayer.lastSuccessAt(),
-  });
+  if (ALERT_APPS.has(APP)) {
+    // The only place cards.js and alerts.js are ever loaded. The Map never reaches this branch.
+    Promise.all([import("./cards.js"), import("./alerts.js")]).then(([cards, alertModule]) => {
+      cards.setCardLocationSource(() => latestLocation);
+      setHazardPopupRenderer(cards.openHazardCard);
+      alerts = alertModule.setupAlerts({
+        strip: document.querySelector("#hazard-status"),
+        cardHost: document.querySelector("#alert-cards"),
+        lastHazardPoll: () => hazardLayer.lastSuccessAt(),
+      });
+      alerts.setHazards(latestHazardFeatures);
+    }).catch(() => {});
+  }
   routingController = setupRouting(map, {
     getLatestLocation: () => latestLocation,
     requestLocation: requestCurrentPosition,
