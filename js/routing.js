@@ -2,7 +2,6 @@ import * as maplibregl from "../vendor/maplibre-gl.js";
 import { loadAddressIndex, nearestNamedPlace, normaliseTokens, searchAddresses } from "./addresses.js";
 import { formatHazardAge, openHazardPopup } from "./hazards.js";
 import { hazardsAlongRoute } from "./route-hazards.js";
-import { fareFor, formatMoney, isDriverMode } from "./driver.js";
 import { printRoute } from "./print.js";
 import { region, regionFileUrl } from "./region.js";
 
@@ -768,10 +767,12 @@ export function setupRouting(map, {
     return cumulative;
   }
 
-  // Driver mode only: the tariff fare for the route's displayed distance (no waiting time).
+  // The meter page only (WARN Meter): the fare line for the route's displayed distance (no waiting time). It exists
+  // only while app.js has installed a formatter, which it does on data-app="meter" and nowhere else; no stored flag
+  // can turn it on.
+  let fareFormatter = null;
   function fareText(totalTenths) {
-    if (!isDriverMode()) return "";
-    return `Fare ${formatMoney(fareFor(totalTenths / 10))}`;
+    return fareFormatter ? fareFormatter(totalTenths / 10) : "";
   }
 
   // Smaller towns only appear in higher-zoom tiles, so keep every locality label seen so far.
@@ -1727,6 +1728,11 @@ export function setupRouting(map, {
     setHazards,
     onLocationFix,
     refreshPlan: () => renderPlan(),
+    // Installs the fare-line formatter (miles -> text) and redraws the plan. Called by the meter page only.
+    setFareFormatter: (formatter) => {
+      fareFormatter = formatter;
+      renderPlan();
+    },
     // Road distance between two [lon, lat] points along the graph (shortest path), or null; used by the trip meter.
     roadDistance: (from, to) => requestWorkerRoute(from, to, [], [], "shortest")
       .then((result) => (result.route ? result.route.totalDistanceM : null)),

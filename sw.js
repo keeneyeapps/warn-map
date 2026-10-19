@@ -1,6 +1,6 @@
 importScripts("./js/precache-list.js");
 
-const CACHE_NAME = "warn-map-shell-v35";
+const CACHE_NAME = "warn-map-shell-v36";
 const SCOPE_URL = new URL(self.registration.scope);
 const ASSET_URLS = self.WARN_PRECACHE_URLS.map((path) => new URL(path, SCOPE_URL).href);
 const ASSET_PATHS = new Set(ASSET_URLS.map((assetUrl) => new URL(assetUrl).pathname));

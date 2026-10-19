@@ -51,19 +51,22 @@ def click_share(page, store):
     shared = page.evaluate(f'() => window.{store}.at(-1)')
     return shared['text'] if isinstance(shared, dict) else shared
 
-def share_test(pw, out, console, external):
+def share_test(pw, out, console, external, page_path, with_fare):
     proc = serve(8765)
     try:
         browser = pw.chromium.launch(channel=CHANNEL, headless=True)
         context = browser.new_context(viewport={'width': 430, 'height': 900})
         context.add_init_script(INIT)
-        # The fare line is a driver-mode feature (step 8): this test runs with driver mode on for the fare check.
+        # The fare line belongs to WARN Meter (meter.html) alone. The Map run also carries the old driver-mode flag,
+        # which must change nothing: no stored flag can turn the fare line on elsewhere.
         context.add_init_script("localStorage.setItem('warn-map-driver-mode', '1')")
         context.on('request', lambda req: external.append((req.method, req.url)) if urlparse(req.url).hostname not in ('localhost', '127.0.0.1') else None)
         page = context.new_page()
         page.on('console', lambda m: console.append((m.type, m.text, m.location.get('url'))) if m.type in ('error', 'warning') else None)
         page.on('pageerror', lambda e: console.append(('pageerror', str(e), '')))
-        page.goto(base_url(8765) + '/?test=1')
+        page.goto(base_url(8765) + page_path)
+        if with_fare:
+            page.wait_for_function('() => !!window.__WARN_DRIVER_TEST__', timeout=60000)
         page.wait_for_function('() => !!window.__WARN_MAP_TEST__', timeout=60000)
         page.wait_for_function("() => /updated|unavailable|failed/i.test(document.querySelector('#hazard-summary').textContent)", timeout=30000)
         page.evaluate('() => { window.__mockHazards = []; return window.__WARN_MAP_TEST__.refreshHazards(); }')
@@ -83,7 +86,8 @@ def share_test(pw, out, console, external):
         page.wait_for_timeout(800)
         total = re.fullmatch('Total (\\d+\\.\\d mi) · (\\d+ min)', page.locator('.route-total-distance').inner_text())
         hazard_distance = page.locator('.route-hazard-distance').inner_text()
-        fare = page.locator('.route-fare').inner_text()
+        fare = page.locator('.route-fare').inner_text() if with_fare else None
+        _soft(with_fare or page.locator('.route-fare').count() == 0, 'fare line on a page without the meter', 120)
         roads = page.evaluate('() => window.__WARN_MAP_TEST__.routeRoads()')
         text = click_share(page, '__shared')
         lines = text.split('\n')
@@ -96,17 +100,19 @@ def share_test(pw, out, console, external):
         _soft(len(road_names) == len(set(road_names)), lines[2], 136)
         _soft(lines[3] == '1 reported hazard along your route:', lines[3], 137)
         _soft(lines[4] == f'  rough road, both lanes, {hazard_distance} ahead (reported 20 d ago)', lines[4], 138)
-        expected_fare = page.evaluate("async (miles) => `Fare $${(await import('./js/driver.js')).fareFor(miles).toFixed(2)}`", float(total.group(1).split()[0]))
-        _soft(lines[5] == fare == expected_fare, (lines[5], fare, expected_fare), 139)
-        _soft(len(lines) == 6, lines, 140)
+        if with_fare:
+            expected_fare = page.evaluate("async (miles) => `Fare $${(await import('./js/driver.js')).fareFor(miles).toFixed(2)}`", float(total.group(1).split()[0]))
+            _soft(lines[5] == fare == expected_fare, (lines[5], fare, expected_fare), 139)
+            _soft(len(lines) == 6, lines, 140)
+        else:
+            _soft(len(lines) == 5 and not any('Fare' in line for line in lines), lines, 140)
         page.screenshot(path=os.path.join(SHOTS, "route-share-destination-flag.png"))
         page.evaluate('() => { window.__mockHazards = []; return window.__WARN_MAP_TEST__.refreshHazards(); }')
         page.get_by_text('No reported hazards along your route').wait_for(timeout=10000)
-        page.evaluate("() => localStorage.removeItem('warn-map-driver-mode')")  # driver mode off: no fare line
         text2 = click_share(page, '__shared')
         out['share_text_no_hazards_no_rate'] = text2
         l2 = text2.split('\n')
-        _soft(l2[3] == 'No reported hazards along your route' and len(l2) == 4, l2, 152)
+        _soft(l2[3] == 'No reported hazards along your route' and len(l2) == (5 if with_fare else 4), l2, 152)
         page.evaluate('() => { navigator.share = undefined; }')
         copied = click_share(page, '__copied')
         _soft(copied == text2, None, 157)
@@ -155,7 +161,8 @@ def offline_test(pw, out):
 def main():
     out, console, external = ({}, [], [])
     with sync_playwright() as pw:
-        share_test(pw, out, console, external)
+        share_test(pw, out.setdefault('map', {}), console, external, '/?test=1', False)
+        share_test(pw, out.setdefault('meter', {}), console, external, '/meter.html?test=1', True)
         offline_test(pw, out)
     out['console'] = console
     out['external'] = sorted(set(external))

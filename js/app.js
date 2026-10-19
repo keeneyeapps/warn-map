@@ -1,6 +1,5 @@
 import * as maplibregl from "../vendor/maplibre-gl.js";
 import { REGION_FILE } from "./config.js";
-import { applyDriverQuery, setupDriverTools } from "./driver.js";
 import { setHazardPopupRenderer, startHazardLayer } from "./hazards.js";
 import { createMap } from "./map.js";
 import { setupRouting } from "./routing.js";
@@ -8,10 +7,9 @@ import { setupRouting } from "./routing.js";
 const MOVING_SPEED_MS = 1.5;
 const MIN_COURSE_DISTANCE_M = 15;
 
-applyDriverQuery();
-
-// Which app this page is (<html data-app>): "map" is the trunk and loads no cards, alerts, or inputs;
-// "alerts" (warn.html) and the future "drive" add cards.js and alerts.js here and nowhere else.
+// Which app this page is (<html data-app>): "map" is the trunk and loads no cards, alerts, inputs, or meter;
+// "alerts" (warn.html) and the future "drive" add cards.js and alerts.js here and nowhere else; "meter"
+// (meter.html, unlisted) adds driver.js here and nowhere else.
 const APP = document.documentElement.dataset.app || "map";
 const ALERT_APPS = new Set(["alerts", "drive"]);
 
@@ -279,21 +277,27 @@ map.once("style.load", () => {
     requestLocation: requestCurrentPosition,
     refreshHazards: () => hazardLayer.refresh(),
   });
-  const driverTools = setupDriverTools({
-    settingsPanel: document.querySelector("#settings-panel"),
-    controls: document.querySelector(".map-controls"),
-    beforeControl: document.querySelector("#clear-route"),
-    versionLine: document.querySelector("#app-version-line"),
-    showToast,
-    routeDistance: routingController.roadDistance,
-    placeNameNear: routingController.placeNameNear,
-    // The screen already stays on while the page is visible; a trip re-requests it in case the system released it.
-    keepScreenOn: requestWakeLock,
-    onTariffChange: routingController.refreshPlan,
-  });
-  if (["localhost", "127.0.0.1", "[::1]"].includes(location.hostname)
-      && new URLSearchParams(location.search).get("test") === "1") {
-    globalThis.__WARN_DRIVER_TEST__ = driverTools;
+  if (APP === "meter") {
+    // The only place driver.js is ever loaded: the trip meter, tariff, Trips list and the planner fare line. The page
+    // itself is the opt-in, so there is no unlock. The Map and Alerts never reach this branch.
+    import("./driver.js").then((driver) => {
+      routingController.setFareFormatter((miles) => `Fare ${driver.formatMoney(driver.fareFor(miles))}`);
+      const driverTools = driver.setupDriverTools({
+        settingsPanel: document.querySelector("#settings-panel"),
+        controls: document.querySelector(".map-controls"),
+        beforeControl: document.querySelector("#clear-route"),
+        showToast,
+        routeDistance: routingController.roadDistance,
+        placeNameNear: routingController.placeNameNear,
+        // The screen already stays on while the page is visible; a trip re-requests it in case the system released it.
+        keepScreenOn: requestWakeLock,
+        onTariffChange: routingController.refreshPlan,
+      });
+      if (["localhost", "127.0.0.1", "[::1]"].includes(location.hostname)
+          && new URLSearchParams(location.search).get("test") === "1") {
+        globalThis.__WARN_DRIVER_TEST__ = driverTools;
+      }
+    }).catch(() => {});
   }
 
   map.addSource("device-location", {

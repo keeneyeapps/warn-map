@@ -20,6 +20,7 @@ from harness import CHANNEL, OUT, PYTHON, REPO, SCRATCH, SHOTS, base_url, port_f
 
 PORT = port_for(8779)
 BASE = f"http://127.0.0.1:{PORT}/?test=1"
+METER = f"http://127.0.0.1:{PORT}/meter.html?test=1"
 KENAI = [60.5603, -151.2235]
 SOLDOTNA = [60.4864, -151.0583]
 COLUMNS = ["t_s", "lat", "lon", "accuracy_m", "speed_ms", "interval_s", "straight_m", "road_m", "added_m", "slow",
@@ -119,18 +120,18 @@ def main():
             page.on("pageerror", lambda e: console.append(("pageerror", str(e)[:300])))
             page.on("download", lambda d: downloads.append(d.suggested_filename))
 
-            # 1. Driver mode off: no trace UI and nothing stored.
+            # 1. The Map: no trace UI and nothing stored.
             page.goto(BASE)
             page.wait_for_function("() => !!window.__WARN_MAP_TEST__", timeout=60000)
             page.wait_for_load_state("networkidle")
             page.locator("#settings-toggle").click()
             check(page.locator("#driver-trace-note, .driver-export-trace, .driver-delete-traces").count() == 0,
-                  "driver mode off: no trace note or buttons in the page")
+                  "Map: no trace note or buttons in the page")
             check(page.evaluate("() => Object.keys(localStorage).filter((k) => k.startsWith('warn-map-trace'))") == [],
-                  "driver mode off: no trace keys stored")
+                  "Map: no trace keys stored")
 
             # 2. A simulated trip, with a reload in the middle.
-            page.goto(BASE + "&driver")
+            page.goto(METER)
             page.wait_for_function("() => !!window.__WARN_MAP_TEST__ && !!window.__WARN_DRIVER_TEST__", timeout=60000)
             page.wait_for_load_state("networkidle")
             page.evaluate("([s, d]) => window.__WARN_MAP_TEST__.route(s, d)", [KENAI, SOLDOTNA])
@@ -201,7 +202,7 @@ def main():
             # 3. The trip list: buttons, the on-device note, export on tap only, delete.
             page.locator("#settings-toggle").click()
             check(page.locator("#driver-trace-note").count() == 1
-                  and "never uploaded" in page.locator("#driver-trace-note").inner_text(), "on-device note shown in driver mode")
+                  and "never uploaded" in page.locator("#driver-trace-note").inner_text(), "on-device note shown on the meter page")
             check(page.locator(".driver-trip-list li .driver-export-trace").count() == 1
                   and page.locator(".driver-trip-list li .driver-delete-traces").count() == 1, "Export trace and Delete traces on the entry")
             page.screenshot(path=os.path.join(SHOTS, "trace-trips-list.png"))

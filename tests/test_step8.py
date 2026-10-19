@@ -1,4 +1,4 @@
-"""Driver tools: hidden by default, ?driver and the version-tap toggle, tariff formula, trip meter, resume."""
+"""WARN Meter (meter.html): the Map has no driver tools at all; the meter page has them always on. Tariff formula, trip meter, resume."""
 import json
 import math
 import os
@@ -13,6 +13,7 @@ from harness import CHANNEL, OUT, PYTHON, REPO, SCRATCH, SHOTS, base_url, port_f
 
 PORT = port_for(8774)
 BASE = f"http://127.0.0.1:{PORT}/?test=1"
+METER = f"http://127.0.0.1:{PORT}/meter.html?test=1"
 KENAI = [60.5603, -151.2235]
 SOLDOTNA = [60.4864, -151.0583]
 
@@ -103,7 +104,8 @@ def main():
                     if m.type in ("error", "warning") else None)
             page.on("pageerror", lambda e: console.append((phase[0], "pageerror", str(e)[:300])))
 
-            # 1. Normal use: nothing about fares, tariffs, or trips exists in the page, even with settings open.
+            # 1. The Map: nothing about fares, tariffs, or trips exists in the page, even with settings open, and
+            #    seven taps on the version line do nothing (the unlock is gone).
             page.goto(BASE)
             page.wait_for_function("() => !!window.__WARN_MAP_TEST__", timeout=60000)
             page.wait_for_load_state("networkidle")
@@ -111,33 +113,30 @@ def main():
             page.wait_for_function("() => document.querySelector('.route-total')", timeout=30000)
             page.locator("#settings-toggle").click()
             out["normal mentions"] = mentions(page)
-            check(out["normal mentions"] == [], "normal mode: no fare/tariff/trip in the DOM")
+            check(out["normal mentions"] == [], "Map: no fare/tariff/trip in the DOM")
             out["normal share"] = page.evaluate("() => window.__WARN_MAP_TEST__.shareText()")
-            check(not re.search(MENTION, out["normal share"], re.I), "normal mode: share text has no fare")
-
-            # 2. Seven taps on the version line turn driver tools on, and seven more turn them off.
+            check(not re.search(MENTION, out["normal share"], re.I), "Map: share text has no fare")
             tap_version(page)
-            out["toast on"] = page.locator("#location-status").inner_text()
-            check(out["toast on"] == "Driver tools on", "toast: Driver tools on")
-            check(page.locator("#driver-settings").count() == 1 and page.locator("#start-trip").count() == 1,
-                  "taps: driver tools appear")
-            out["planner fare"] = page.locator(".route-fare").inner_text() if page.locator(".route-fare").count() else None
-            tap_version(page)
-            out["toast off"] = page.locator("#location-status").inner_text()
-            check(out["toast off"] == "Driver tools off", "toast: Driver tools off")
-            check(mentions(page) == [], "taps: driver tools removed again")
-            page.locator("#settings-toggle").click()
+            check(page.locator("#driver-settings").count() == 0 and page.locator("#start-trip").count() == 0
+                  and mentions(page) == [], "Map: seven taps on the version line unlock nothing")
+            check(page.locator(".route-fare").count() == 0, "Map: no fare line on the route")
 
-            # 3. ?driver turns the tools on once and is removed from the address.
+            # 2. The meter page: the driver tools are on from the first load, with no unlock.
             phase[0] = "driver"
-            page.goto(BASE + "&driver")
+            page.goto(METER)
             page.wait_for_function("() => !!window.__WARN_MAP_TEST__ && !!window.__WARN_DRIVER_TEST__", timeout=60000)
             page.wait_for_load_state("networkidle")
-            out["url after ?driver"] = page.url
-            check("driver" not in page.url, "?driver removed from the URL")
+            check(page.locator("#driver-settings").count() == 1 and page.locator("#start-trip").count() == 1,
+                  "meter page: driver tools present without any unlock")
+            page.evaluate("([s, d]) => window.__WARN_MAP_TEST__.route(s, d)", [KENAI, SOLDOTNA])
+            page.wait_for_function("() => document.querySelector('.route-total')", timeout=30000)
+            out["planner fare"] = page.locator(".route-fare").inner_text() if page.locator(".route-fare").count() else None
+            check(out["planner fare"] is not None and out["planner fare"].startswith("Fare $"), "meter page: the planner shows a fare line")
+            page.locator("#clear-route").click()
             page.locator("#settings-toggle").click()
             out["tariff labels"] = page.locator("#driver-tariff label").all_inner_texts()
             check(len(out["tariff labels"]) == 5, "five tariff settings")
+            check("per full minute" in page.locator("#driver-tariff").inner_text(), "wait rate help says per full minute")
             page.screenshot(path=os.path.join(SHOTS, "step8-tariff.png"))
             page.locator("#settings-toggle").click()
 

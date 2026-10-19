@@ -6,7 +6,7 @@ from harness import CHANNEL, OUT, PYTHON, REPO, SCRATCH, SHOTS, base_url, port_f
 
 PORT = port_for(8777)
 ROOT = f"http://127.0.0.1:{PORT}/"
-BANNED = re.compile(r"driver|tariff|fare|taxi|fleet", re.I)
+BANNED = re.compile(r"driver|tariff|fare|taxi|fleet|meter", re.I)
 
 
 def serve():
@@ -23,7 +23,7 @@ def main():
 
     source = open(os.path.join(REPO, "start.html"), encoding="utf-8").read()
     out["banned words in source"] = BANNED.findall(source)
-    check(not out["banned words in source"], "no driver/tariff/fare/taxi/fleet in the source")
+    check(not out["banned words in source"], "no driver/tariff/fare/taxi/fleet/meter (and so no link to meter.html) in the source")
     check("manifest" not in source.lower(), "no manifest in source")
 
     proc = serve()
@@ -209,17 +209,28 @@ def main():
     # cannot be link-captured into the wrong installed app). Resolved the way a browser does, against the page URL.
     from urllib.parse import urljoin
     base = "https://keeneyeapps.github.io/warn-map/start.html"
-    manifests = {name: json.load(open(os.path.join(REPO, name), encoding="utf-8")) for name in ("manifest.webmanifest", "warn.webmanifest")}
+    names = ("manifest.webmanifest", "warn.webmanifest", "meter.webmanifest")
+    manifests = {name: json.load(open(os.path.join(REPO, name), encoding="utf-8")) for name in names}
     resolved = {name: {"id": m.get("id"), "start_url": urljoin(base, m["start_url"]), "scope": urljoin(base, m["scope"])}
                 for name, m in manifests.items()}
     out["manifests"] = resolved
-    drive_scope = resolved["warn.webmanifest"]["scope"]
-    map_start = resolved["manifest.webmanifest"]["start_url"]
-    check(not map_start.startswith(drive_scope), "Drive's scope cannot contain the Map's start_url")
-    check(resolved["warn.webmanifest"]["start_url"].startswith(drive_scope), "Drive's start_url is inside its own scope")
-    check(resolved["manifest.webmanifest"]["start_url"].startswith(resolved["manifest.webmanifest"]["scope"]), "Map's start_url is inside its own scope")
-    check(resolved["warn.webmanifest"]["id"] == "/warn-map/warn" and resolved["warn.webmanifest"]["start_url"].endswith("/warn-map/warn.html"), "Drive id and start_url unchanged")
-    check(len({resolved[n]["id"] for n in resolved}) == 2, "the two apps have distinct ids")
+    for name, info in resolved.items():
+        check(info["start_url"].startswith(info["scope"]), f"{name}: start_url is inside its own scope")
+    # No scope may contain another app's start_url, except the Map's, whose scope "./" contains the others by design.
+    for name, info in resolved.items():
+        if name == "manifest.webmanifest":
+            continue
+        for other, other_info in resolved.items():
+            if other != name:
+                check(not other_info["start_url"].startswith(info["scope"]), f"{name}'s scope cannot contain {other}'s start_url")
+    check(resolved["warn.webmanifest"]["id"] == "/warn-map/warn" and resolved["warn.webmanifest"]["start_url"].endswith("/warn-map/warn.html"), "Alerts id and start_url unchanged")
+    meter = manifests["meter.webmanifest"]
+    check(meter["id"] == "/warn-map/meter" and meter["name"] == "WARN Meter" and meter["short_name"] == "WARN Meter"
+          and meter["start_url"] == "./meter.html" and meter["scope"] == "./meter.html", "meter manifest fields")
+    check(len({r["id"] for r in resolved.values()}) == 3 and len({r["scope"] for r in resolved.values()}) == 3
+          and len({r["start_url"] for r in resolved.values()}) == 3, "the three apps have distinct ids, scopes and start_urls")
+    check(all(manifests[n]["icons"] == manifests["warn.webmanifest"]["icons"] and manifests[n]["theme_color"] == manifests["warn.webmanifest"]["theme_color"]
+              and manifests[n]["background_color"] == manifests["warn.webmanifest"]["background_color"] for n in names), "same icons and theme in all three")
     online = console[:offline_from]
     offline_unexpected = [c for c in console[offline_from:]
                           if not any(k in c[1] for k in ("ERR_INTERNET_DISCONNECTED", "ERR_FAILED", "Failed to fetch"))]

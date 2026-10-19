@@ -1,12 +1,11 @@
-// Driver tools for professional drivers: tariff settings, the planner fare, and a trip meter. Hidden unless driver
-// mode is on (open the page once with ?driver, or tap the About version line 7 times); with it off, none of this UI
-// exists in the page. Every tariff value and trip record stays in this browser's localStorage.
+// Driver tools for professional drivers: tariff settings, the planner fare, and a trip meter. Loaded by app.js on
+// the meter page (meter.html, <html data-app="meter">) only, where they are always on: the page itself is the
+// opt-in. No other page loads this module. Every tariff value and trip record stays in this browser's localStorage.
 
 import {
   appendRow, clearRunning, clearTraces, downloadTrace, loadRunning, loadTraces, newLog, saveRunning, storeTrace,
 } from "./trace.js";
 
-const DRIVER_MODE_KEY = "warn-map-driver-mode";
 const TRIP_KEY = "warn-map-trip-running";
 const TRIPS_KEY = "warn-map-trips";
 const MAX_TRIPS = 200;
@@ -15,8 +14,6 @@ const MAX_ACCURACY_M = 50;
 const MAX_SPEED_MS = 100 * 0.44704; // a jump implying more than 100 mph is a bad fix
 const SLOW_STREAK = 3; // consecutive slow fixes before time counts as waiting
 const METERS_PER_MILE = 1609.344;
-const VERSION_TAPS = 7;
-const VERSION_TAP_WINDOW_MS = 3000;
 
 export const TARIFF_FIELDS = [
   { key: "start", storage: "warn-map-tariff-start", label: "Start fare", unit: "$", fallback: 3.75,
@@ -47,23 +44,6 @@ function writeStorage(key, value) {
   } catch {
     // Storage unavailable: the value applies to this page only.
   }
-}
-
-export function isDriverMode() {
-  return readStorage(DRIVER_MODE_KEY) === "1";
-}
-
-function setDriverMode(on) {
-  writeStorage(DRIVER_MODE_KEY, on ? "1" : null);
-}
-
-// Opening the page with ?driver turns driver mode on once; the query is then removed from the address.
-export function applyDriverQuery() {
-  const url = new URL(globalThis.location.href);
-  if (!url.searchParams.has("driver")) return;
-  setDriverMode(true);
-  url.searchParams.delete("driver");
-  globalThis.history.replaceState(globalThis.history.state, "", url.href);
 }
 
 export function tariff() {
@@ -180,8 +160,7 @@ function element(tag, props = {}, children = []) {
  * [lon, lat] points (snapped to the road graph) or null; `placeNameNear(point)` a nearby place name or null.
  */
 export function setupDriverTools({
-  settingsPanel, controls, beforeControl, versionLine, showToast, routeDistance, placeNameNear, keepScreenOn,
-  onTariffChange,
+  settingsPanel, controls, beforeControl, showToast, routeDistance, placeNameNear, keepScreenOn, onTariffChange,
 }) {
   let mounted = null;
   let trip = null;
@@ -343,7 +322,7 @@ export function setupDriverTools({
     render(record);
   }
 
-  // ---- UI (exists only while driver mode is on) ----
+  // ---- UI (the meter page only) ----
 
   function tariffSection() {
     const section = element("section", { className: "driver-tariff", id: "driver-tariff" });
@@ -451,10 +430,6 @@ export function setupDriverTools({
   }
 
   function render(summary = null) {
-    if (!isDriverMode()) {
-      unmount();
-      return;
-    }
     if (!mounted) {
       mounted = { settings: element("div", { className: "driver-settings", id: "driver-settings" }), trip: null };
       settingsPanel.prepend(mounted.settings);
@@ -468,46 +443,18 @@ export function setupDriverTools({
     mounted.trip = controlsBox;
   }
 
-  function unmount() {
-    if (!mounted) return;
-    mounted.settings.remove();
-    mounted.trip?.remove();
-    mounted = null;
-  }
-
-  // ---- driver mode toggle: 7 taps on the About version line ----
-
-  let taps = [];
-  versionLine.addEventListener("click", () => {
-    const now = Date.now();
-    taps = [...taps.filter((time) => now - time < VERSION_TAP_WINDOW_MS), now];
-    if (taps.length < VERSION_TAPS) return;
-    taps = [];
-    const on = !isDriverMode();
-    if (!on && trip) {
-      showToast("End the trip before turning driver tools off");
-      return;
-    }
-    setDriverMode(on);
-    showToast(on ? "Driver tools on" : "Driver tools off");
-    render();
-    onTariffChange();
-  });
-
   // ---- resume a trip that was running when the page reloaded ----
 
-  if (isDriverMode()) {
-    try {
-      const saved = JSON.parse(readStorage(TRIP_KEY) ?? "null");
-      if (saved && Number.isFinite(saved.meters) && Number.isFinite(saved.waitSeconds)) {
-        trip = { slowSeconds: [], lastFix: null, startPlace: null, ...saved };
-        traceLog = loadRunning() ?? newLog();
-        tracePersistedRows = traceLog.lines.length;
-        startWatching();
-      }
-    } catch {
-      trip = null;
+  try {
+    const saved = JSON.parse(readStorage(TRIP_KEY) ?? "null");
+    if (saved && Number.isFinite(saved.meters) && Number.isFinite(saved.waitSeconds)) {
+      trip = { slowSeconds: [], lastFix: null, startPlace: null, ...saved };
+      traceLog = loadRunning() ?? newLog();
+      tracePersistedRows = traceLog.lines.length;
+      startWatching();
     }
+  } catch {
+    trip = null;
   }
   globalThis.addEventListener("pagehide", () => {
     if (trip) persistTrip();
