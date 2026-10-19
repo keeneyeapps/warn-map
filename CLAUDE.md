@@ -74,4 +74,5 @@ not a write in this sense.
 - `icons/`: app icons built by `tools/build_icons.py` from Luna Montgomery's moose-head master (kept in the Android repo). The moose artwork is © Luna Montgomery, all rights reserved, used by permission; see `LICENSE`. Never copy the master or the artwork into other assets without that permission.
 - `LICENSE`: PolyForm Noncommercial 1.0.0 for the code (the same licence and Required Notice wording as the Android WARN repo), then the artwork Required Notice and the data notices. Keep the Required Notice lines identical in LICENSE, README.md, and the About card in index.html.
 - About card (behind the gear): its version is read from the service worker's cache name, so bumping `CACHE_NAME` in `sw.js` is the only version bump.
+- `tests/`: the Playwright browser suite. `python testsun_all.py` runs it (about six minutes); output goes to the git-ignored `tests/out/`. See `tests/README.md`. Run it before committing page or module changes.
 - `docs/screenshots/`: local verification screenshots.

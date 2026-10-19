@@ -7,3 +7,7 @@ tools/*
 !tools/build_icons.py
 !tools/build_boundary.py
 !tools/region.py
+
+# Test output (screenshots, PDFs, logs) and Python caches
+tests/out/
+__pycache__/
