@@ -14,6 +14,15 @@ const AGE_TICK_MS = 15_000;
 const QUIET_MS = 120_000;
 const UPDATE_CHECK_MS = 30 * 60_000;
 const FOCUS_ZOOM = 12.5;
+// The basemap must draw before anything large is downloaded: on a slow link the 17 MB of place data, fetched at the
+// same moment as the tiles, starved the tile requests until the connection dropped and the map stayed blank for good
+// (2026-10-19, live site). Place data waits for the first drawn basemap, or this long if that never happens.
+const PLACE_DATA_FALLBACK_MS = 120_000;
+// If the basemap has not drawn by then, or its source fails before drawing, the page reloads itself when quiet.
+const BASEMAP_TIMEOUT_MS = 90_000;
+const BASEMAP_RETRY_GAP_MS = 10 * 60_000;
+const BASEMAP_RETRY_KEY = "warn-watch-basemap-retry-at";
+const BASEMAP_SOURCE = "protomaps";
 
 const TEST_MODE = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname)
   && new URLSearchParams(location.search).get("test") === "1";
@@ -28,6 +37,7 @@ const updatedLine = document.querySelector("#watch-updated");
 const staleLine = document.querySelector("#watch-stale");
 const list = document.querySelector("#watch-list");
 const panel = document.querySelector("#watch-panel");
+const mapStatus = document.querySelector("#watch-map-status");
 
 let features = [];
 let featuresById = new Map();
@@ -193,15 +203,80 @@ globalThis.setInterval(() => {
 }, AGE_TICK_MS);
 globalThis.setInterval(renderStatus, 1000);
 
-loadDescriber().then((describer) => {
-  describe = describer;
-  renderList();
-}).catch(() => {});
+// ---- the basemap first, then the place data ----
+
+let basemapReady = false;
+let basemapStuck = false;
+let placeDataRequestedAt = null;
+
+function startPlaceData() {
+  if (placeDataRequestedAt !== null) return;
+  placeDataRequestedAt = Date.now();
+  loadDescriber().then((describer) => {
+    describe = describer;
+    renderList();
+  }).catch(() => {});
+}
+
+function basemapLoaded() {
+  try {
+    return map.isSourceLoaded(BASEMAP_SOURCE) && map.querySourceFeatures(BASEMAP_SOURCE, { sourceLayer: "earth" }).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+function onBasemapReady() {
+  if (basemapReady) return;
+  basemapReady = true;
+  basemapStuck = false;
+  mapStatus.hidden = true;
+  startPlaceData();
+}
+
+function onBasemapStuck() {
+  if (basemapReady || basemapStuck) return;
+  basemapStuck = true;
+  let lastRetry = 0;
+  try {
+    lastRetry = Number(sessionStorage.getItem(BASEMAP_RETRY_KEY)) || 0;
+  } catch {
+    lastRetry = 0;
+  }
+  const retry = Date.now() - lastRetry >= BASEMAP_RETRY_GAP_MS;
+  mapStatus.textContent = retry
+    ? "The map is slow to load. The page will reload to try again."
+    : "The map could not load. Hazards are still listed and updated.";
+  mapStatus.hidden = false;
+  if (retry) {
+    try {
+      sessionStorage.setItem(BASEMAP_RETRY_KEY, String(Date.now()));
+    } catch {
+      // No session storage: the gap is not enforced, the reload still waits for a quiet moment.
+    }
+    requestQuietReload();
+  }
+}
+
+map.on("idle", () => {
+  if (basemapLoaded()) onBasemapReady();
+});
+map.on("error", (event) => {
+  if (event?.sourceId === BASEMAP_SOURCE && !basemapReady) onBasemapStuck();
+});
+const basemapTimeoutMs = (TEST_MODE && Number(globalThis.__WARN_WATCH_BASEMAP_MS)) || BASEMAP_TIMEOUT_MS;
+globalThis.setTimeout(() => {
+  if (!basemapReady) onBasemapStuck();
+}, basemapTimeoutMs);
+globalThis.setTimeout(startPlaceData, (TEST_MODE && Number(globalThis.__WARN_WATCH_PLACE_FALLBACK_MS)) || PLACE_DATA_FALLBACK_MS);
 
 map.once("style.load", () => {
   hazardLayer = startHazardLayer(map, { intervalMs: POLL_MS, onHazardsUpdate, onStatus });
   if (TEST_MODE) {
-    globalThis.__WARN_WATCH_TEST__ = { map, refresh: () => hazardLayer.refresh(), focus: focusFeature };
+    globalThis.__WARN_WATCH_TEST__ = {
+      map, refresh: () => hazardLayer.refresh(), focus: focusFeature,
+      state: () => ({ basemapReady, basemapStuck, placeDataRequestedAt, describerReady: !!describe }),
+    };
   }
 });
 
@@ -246,6 +321,9 @@ const quietMs = (TEST_MODE && Number(globalThis.__WARN_WATCH_QUIET_MS)) || QUIET
 const reloadPage = (TEST_MODE && globalThis.__WARN_WATCH_RELOAD) || (() => globalThis.location.reload());
 let lastInteractionAt = Date.now();
 let updatePending = false;
+function requestQuietReload() {
+  updatePending = true;
+}
 for (const name of ["pointerdown", "keydown", "wheel", "touchstart"]) {
   globalThis.addEventListener(name, () => { lastInteractionAt = Date.now(); }, { passive: true, capture: true });
 }

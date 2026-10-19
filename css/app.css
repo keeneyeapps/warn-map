@@ -1553,6 +1553,25 @@ html[data-app="watch"] #map {
   font-size: 16px;
 }
 
+.watch-map-status {
+  position: fixed;
+  top: calc(var(--header-offset) + 12px);
+  left: 12px;
+  z-index: 3;
+  max-width: calc(100vw - var(--watch-panel-w, 0px) - 80px);
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 4px;
+  background: var(--brand-yellow);
+  color: #000;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.watch-map-status[hidden] {
+  display: none;
+}
+
 .watch-empty {
   padding: 24px 20px;
   color: #d6d4cc;

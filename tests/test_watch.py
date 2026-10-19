@@ -255,6 +255,32 @@ def main():
                 mentions = page.evaluate("() => /\\b(driver|vehicle|taxi|fare|tariff|trip|cab)\\b/i.test(document.body.innerText)")
                 check(not mentions, "nothing about a driver or vehicle is shown")
 
+                # ---- the basemap draws first; the large place data only after it (the live-site bug of 2026-10-19).
+                #      Real tiles, region and graph from this repo: only the hazard feed is mocked. ----
+                timing = page.evaluate("""() => {
+                  const entries = performance.getEntriesByType('resource');
+                  const tiles = entries.filter((e) => e.name.includes('/tiles/kenai.pmtiles')).sort((a, b) => a.startTime - b.startTime);
+                  const graph = entries.find((e) => e.name.includes('kenai-roads.json'));
+                  const addresses = entries.find((e) => e.name.includes('kenai-addresses.json'));
+                  return { tiles: tiles.map((e) => [Math.round(e.startTime), Math.round(e.responseEnd)]),
+                           graphStart: graph ? Math.round(graph.startTime) : null,
+                           addressesStart: addresses ? Math.round(addresses.startTime) : null,
+                           state: window.__WARN_WATCH_TEST__.state(),
+                           roads: window.__WARN_WATCH_TEST__.map.querySourceFeatures('protomaps', { sourceLayer: 'roads' }).length,
+                           earth: window.__WARN_WATCH_TEST__.map.querySourceFeatures('protomaps', { sourceLayer: 'earth' }).length };
+                }""")
+                out["load order"] = {k: v for k, v in timing.items() if k != "tiles"} | {"tile requests": len(timing["tiles"]), "first tiles": timing["tiles"][:3]}
+                check(timing["state"]["basemapReady"] and timing["roads"] > 0 and timing["earth"] > 0,
+                      f"the basemap actually draws (roads {timing['roads']}, earth {timing['earth']})")
+                check(len(timing["tiles"]) >= 2, "tile data was requested after the header")
+                first_tile_data_end = timing["tiles"][1][1] if len(timing["tiles"]) >= 2 else None
+                check(timing["graphStart"] is not None and timing["addressesStart"] is not None,
+                      "the place data is loaded (once the basemap has drawn)")
+                check(first_tile_data_end is not None and timing["graphStart"] is not None
+                      and timing["graphStart"] >= first_tile_data_end and timing["addressesStart"] >= first_tile_data_end,
+                      f"the road graph and address index start only after the first basemap tiles arrive ({out['load order']})")
+                check(page.locator("#watch-map-status").is_hidden(), "no map warning when the basemap draws")
+
                 # ---- kiosk bits that need no waiting: wake lock, geolocation, modules ----
                 check(page.evaluate("() => window.__wake") >= 1, "a wake lock is requested")
                 check(page.evaluate("() => window.__geo") == 0, "no geolocation request is made")
@@ -348,6 +374,32 @@ def main():
                 page.wait_for_function("() => !!window.__WARN_WATCH_TEST__", timeout=60000)
                 check(page.title().startswith("WARN Watch") and page.locator("#watch-panel").count() == 1, "offline: /watch.html is served as the Watch page")
                 context.close()
+
+            # ---- a basemap that never arrives: the hazards still list, the page says so and reloads itself when quiet ----
+            context = browser.new_context(viewport={"width": 1366, "height": 768})
+            context.add_init_script(INIT)
+            context.add_init_script(f"window.__mockHazards = {json.dumps(rows_for(HAZARDS))};"
+                                    "window.__WARN_WATCH_BASEMAP_MS = 4000; window.__WARN_WATCH_PLACE_FALLBACK_MS = 3000;")
+            context.route("**/tiles/kenai.pmtiles", lambda route: route.abort())
+            page = context.new_page()
+            stuck_console = []
+            page.on("pageerror", lambda e: console.append(("stuck", "pageerror", str(e)[:200])))
+            page.on("console", lambda m: stuck_console.append(m.text[:160]) if m.type == "error" else None)
+            page.goto(URL)
+            page.wait_for_function("() => !!window.__WARN_WATCH_TEST__", timeout=60000)
+            page.wait_for_function(f"() => document.querySelectorAll('#watch-list .watch-row').length === {len(HAZARDS)}", timeout=30000)
+            page.wait_for_function("() => !document.querySelector('#watch-map-status').hidden", timeout=20000)
+            note = page.locator("#watch-map-status").inner_text()
+            out["stuck basemap note"] = note
+            check("reload" in note.lower(), f"a stuck basemap is reported on screen ({note!r})")
+            page.wait_for_function("() => window.__reloads === 1", timeout=15000)
+            check(True, "a stuck basemap makes the page reload itself at a quiet moment")
+            page.wait_for_function("() => !document.body.innerText.includes('Locating…')", timeout=30000)
+            check(page.locator("#watch-list .watch-row").count() == len(HAZARDS), "the hazard list still works without a basemap")
+            check(page.evaluate("() => window.__WARN_WATCH_TEST__.state().basemapStuck"), "the page knows the basemap is stuck")
+            page.screenshot(path=os.path.join(SHOTS, "watch-basemap-stuck.png"))
+            out["stuck console errors (expected: the blocked tiles)"] = stuck_console[:3]
+            context.close()
 
             # ---- polling every 30 s (a fresh page, no manual refreshes) ----
             context, page, _ = open_page((1366, 768), HAZARDS)

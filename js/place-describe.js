@@ -12,8 +12,9 @@ const CELL_LON = 0.02;
 const CELL_LAT = 0.01;
 const METERS_PER_DEGREE = 111_195;
 
+// Low priority: these files are large (the road graph is about 15 MB) and must never hold up the basemap.
 async function fetchJson(url) {
-  const response = await fetch(url);
+  const response = await fetch(url, { priority: "low" });
   if (!response.ok) throw new Error(`${url} request failed (${response.status})`);
   return response.json();
 }
