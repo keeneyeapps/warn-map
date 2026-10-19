@@ -1,5 +1,14 @@
--- Migration 045: insert-velocity OBSERVATION on spatial_hazards (written 2026-10-19, NOT APPLIED; apply only on
--- instruction). 044 is the report-descriptor migration (docs/design/report-descriptor.md).
+-- Migration 045: insert-velocity OBSERVATION on spatial_hazards (written 2026-10-19). 044 is the report-descriptor
+-- migration (docs/design/report-descriptor.md).
+--
+-- APPLIED 2026-10-19 17:26 UTC by CLI (db query --linked --file), exit 0, no error. VERIFIED read-only the same minute
+-- with supabase/scratch/verify_045.sql (catalog, EXPLAIN and counts; no synthetic row was inserted): V1 and V5 all
+-- PASS; both live counts use hazard_audit_log_inserted_at_idx in under 0.3 ms; hazard_audit_log 348 -> 349 rows
+-- (one real MOOSE report, id 805, filed between the snapshot and the apply and backfilled to apply time - 1 h, as
+-- designed); security_events and net.http_request_queue still empty; claim_security_pushes and ping_security_notify
+-- bodies unchanged (md5 read back). V2-V4 (the insert paths) are covered by the local run only. Recorded fact:
+-- service_role holds EXECUTE on observe_insert_velocity() through the platform's default privileges, as it does on
+-- log_hazard_audit() since 022; it is not a client role and a trigger function cannot be called directly.
 --
 -- WHY. upsert_spatial_hazard_v3 has no count, window or velocity defence: only the merge radius (039) and the
 -- created_at clamp (019). Before any cap is enforced (048), a week of real numbers is needed: how often honest use

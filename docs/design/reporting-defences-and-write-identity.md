@@ -1,9 +1,10 @@
 # Reporting defences and a write identity for WARN Drive (PROPOSAL, nothing applied)
 
-**Status (2026-10-19): design only.** No migration here has been applied. Migration 045 (the insert-velocity
-observation; 044 belongs to the report descriptor) is written, hardened and tested on a throwaway local
-Postgres (section 5; files in `docs/design/sql/`, copies in `WARN/supabase/migrations/`); it waits for an
-explicit instruction to apply.
+**Status (2026-10-19): migration 045 APPLIED and verified; everything else design only.** 045 (the
+insert-velocity observation; 044 belongs to the report descriptor) was applied to the linked project on
+2026-10-19 at 17:26 UTC by CLI and verified read-only (`WARN/supabase/scratch/verify_045.sql`: V1 and V5 all
+PASS, both live counts on the new index; V2-V4 are insert paths, covered by the local run in section 5 only).
+The observation week runs from that moment. 046, 047 and 048 are not written.
 Belongs with the WARN repo's `docs/design/security-migrations-proposed.md`; it lives here because that repo was
 read-only for this session. Move it there when accepted.
 
