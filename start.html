@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#171b1d">
+    <meta name="description" content="WARN is a road-hazard map for the Kenai Peninsula. It works offline.">
+    <title>WARN</title>
+    <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="WARN">
+    <meta property="og:description" content="A road-hazard map for the Kenai Peninsula. Works offline.">
+    <meta property="og:url" content="https://keeneyeapps.github.io/warn-map/start.html">
+    <meta property="og:image" content="https://keeneyeapps.github.io/warn-map/icons/icon-512.png">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="WARN">
+    <meta name="twitter:description" content="A road-hazard map for the Kenai Peninsula. Works offline.">
+    <meta name="twitter:image" content="https://keeneyeapps.github.io/warn-map/icons/icon-512.png">
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        min-height: 100dvh;
+        padding: max(20px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+          max(20px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+        background: #171b1d;
+        color: #f4f3ed;
+        font: 16px/1.45 "Noto Sans", "Segoe UI", system-ui, sans-serif;
+      }
+      main { max-width: 560px; margin: 0 auto; display: grid; gap: 16px; }
+      h1 { margin: 8px 0 0; font-size: 34px; letter-spacing: 0.04em; }
+      .lead { margin: 0; color: #d5dcdb; font-size: 18px; }
+      .cards { display: grid; gap: 12px; margin-top: 8px; }
+      .card {
+        display: grid;
+        gap: 4px;
+        min-height: 96px;
+        padding: 16px 18px;
+        border: 1px solid rgb(255 255 255 / 16%);
+        border-left: 6px solid #ffd200;
+        border-radius: 10px;
+        background: #212121;
+        color: inherit;
+        text-decoration: none;
+      }
+      .card:hover, .card:focus-visible { border-color: #54dfb3; outline: none; }
+      .card h2 { margin: 0; font-size: 22px; }
+      .card p { margin: 0; color: #bdbdbd; font-size: 15px; }
+      .share {
+        min-height: 56px;
+        padding: 0 18px;
+        border: 1px solid rgb(255 255 255 / 22%);
+        border-radius: 10px;
+        background: #f4f3ed;
+        color: #171b1d;
+        font: inherit;
+        font-size: 17px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .share:hover, .share:focus-visible { background: #fff; outline: 2px solid #54dfb3; }
+      footer { margin-top: 12px; padding-top: 14px; border-top: 1px solid rgb(255 255 255 / 14%); color: #b9c4c3; font-size: 13px; }
+      footer h2 { margin: 0 0 4px; font-size: 14px; color: #d5dcdb; }
+      footer p { margin: 6px 0 0; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>WARN</h1>
+      <p class="lead">A road-hazard map for the Kenai Peninsula. It works offline.</p>
+      <nav class="cards" aria-label="Choose a view">
+        <a class="card" id="open-map" href="./">
+          <h2>WARN Map</h2>
+          <p>The full planner: search, routes, hazards, and offline use.</p>
+        </a>
+        <a class="card" id="open-drive" href="./warn.html">
+          <h2>WARN Drive</h2>
+          <p>The in-vehicle view: hazard cards and spoken alerts.</p>
+        </a>
+      </nav>
+      <button id="share" class="share" type="button">Share</button>
+      <footer>
+        <p>Required Notice: Copyright 2026 Keen Eye Apps (https://keeneyeapps.github.io). Licensed under PolyForm Noncommercial 1.0.0.</p>
+        <h2>Why there's a map</h2>
+        <p>WARN is a warning system, not a navigation app. On Android it runs as an overlay on top of whatever you're already using and never needs the screen to itself. iOS doesn't allow that: an app can only warn you while it's open and in front. So on iPhone, WARN has to be the thing on screen, and since it's there anyway, it shows you the map. The map is the price of working on Apple's terms. The warnings are still the point.</p>
+      </footer>
+    </main>
+    <script>
+      (function () {
+        var url = "https://keeneyeapps.github.io/warn-map/start.html";
+        var button = document.getElementById("share");
+        var reset = function () { button.textContent = "Share"; };
+        function copyFallback() {
+          var done = function (text) { button.textContent = text; setTimeout(reset, 2000); };
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(url).then(function () { done("Link copied"); }, function () { done("Copy failed"); });
+          } else {
+            done("Copy failed");
+          }
+        }
+        if (typeof navigator.share !== "function") button.textContent = "Copy link";
+        button.addEventListener("click", function () {
+          if (typeof navigator.share !== "function") { copyFallback(); return; }
+          navigator.share({ title: "WARN", text: "A road-hazard map for the Kenai Peninsula. Works offline.", url: url })
+            .catch(function (error) { if (!error || error.name !== "AbortError") copyFallback(); });
+        });
+      })();
+    </script>
+  </body>
+</html>

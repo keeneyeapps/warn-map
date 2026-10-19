@@ -38,6 +38,7 @@ not a write in this sense. A new shared module must not import report.js; anythi
 - `js/config.js`: public Supabase project URL, anon key, and `REGION_FILE` (which region pack to load).
 - `js/region.js`: loads the region pack at startup; other modules take paths, bbox, and start view from it.
 - `js/addresses.js`: typed-address and named-place matching over the on-device address and places indexes (never queried over the network).
+- `start.html`: the public entry point to share (two cards: WARN Map and WARN Drive, plus a Share button). Static, no manifest, never installable. The root (`index.html`) stays the Map because installed phones start there. It must not mention driver mode, tariffs, or fleet features.
 - `warn.html` / `warn.webmanifest`: WARN Drive, the same shell as `index.html` under its own name and manifest.
 - `js/hazards.js`: read-only hazard polling and GeoJSON layers; its popups are hazard cards.
 - `js/cards.js`: hazard cards after the Android card (colour band, name, distance, age, confirmations; a disabled row for the three action buttons).
