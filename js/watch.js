@@ -18,6 +18,8 @@ const FOCUS_ZOOM = 12.5;
 // same moment as the tiles, starved the tile requests until the connection dropped and the map stayed blank for good
 // (2026-10-19, live site). Place data waits for the first drawn basemap, or this long if that never happens.
 const PLACE_DATA_FALLBACK_MS = 120_000;
+// A place-data download that failed (a slow or dropped link) is tried again after this long.
+const PLACE_DATA_RETRY_MS = 5 * 60_000;
 // If the basemap has not drawn by then, or its source fails before drawing, the page reloads itself when quiet.
 const BASEMAP_TIMEOUT_MS = 90_000;
 const BASEMAP_RETRY_GAP_MS = 10 * 60_000;
@@ -214,7 +216,14 @@ function startPlaceData() {
   placeDataRequestedAt = Date.now();
   loadDescriber().then((describer) => {
     describe = describer;
+    descriptions.clear();
     renderList();
+    if (!describer.complete) {
+      globalThis.setTimeout(() => {
+        placeDataRequestedAt = null;
+        startPlaceData();
+      }, (TEST_MODE && Number(globalThis.__WARN_WATCH_PLACE_RETRY_MS)) || PLACE_DATA_RETRY_MS);
+    }
   }).catch(() => {});
 }
 

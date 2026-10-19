@@ -401,6 +401,34 @@ def main():
             out["stuck console errors (expected: the blocked tiles)"] = stuck_console[:3]
             context.close()
 
+            # ---- place data that fails to download: no false "Not on a named road"; it is tried again ----
+            context = browser.new_context(viewport={"width": 1366, "height": 768})
+            context.add_init_script(INIT)
+            context.add_init_script(f"window.__mockHazards = {json.dumps(rows_for(HAZARDS))}; window.__WARN_WATCH_PLACE_RETRY_MS = 3000;")
+            blocked = {"on": True, "graph": 0}
+            def gate(route):
+                if blocked["on"]:
+                    blocked["graph"] += 1
+                    route.abort()
+                else:
+                    route.continue_()
+            context.route("**/graph/kenai-roads.json", gate)
+            page = context.new_page()
+            page.on("pageerror", lambda e: console.append(("place-fail", "pageerror", str(e)[:200])))
+            page.goto(URL)
+            page.wait_for_function("() => !!window.__WARN_WATCH_TEST__", timeout=60000)
+            page.wait_for_function("() => !document.body.innerText.includes('Locating…')", timeout=60000)
+            places = page.evaluate("() => [...document.querySelectorAll('.watch-place')].map((e) => e.textContent)")
+            out["places with the road graph blocked"] = places
+            check(not any(p == "Not on a named road" for p in places), "a failed road-graph download never claims 'Not on a named road'")
+            check(all(p.startswith("Near ") or p == "Place unavailable" for p in places), "without the road graph a row shows its community or 'Place unavailable'")
+            blocked["on"] = False
+            page.wait_for_function("(e) => [...document.querySelectorAll('.watch-place')].some((x) => x.textContent === e)",
+                                   arg=expected_place[103], timeout=60000)
+            check(blocked["graph"] >= 1, "the road graph was blocked at first")
+            check(True, "the place data is tried again and the full descriptions arrive")
+            context.close()
+
             # ---- polling every 30 s (a fresh page, no manual refreshes) ----
             context, page, _ = open_page((1366, 768), HAZARDS)
             page.wait_for_function("() => window.__fetchLog.length >= 2", timeout=45000)

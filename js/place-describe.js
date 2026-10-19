@@ -135,18 +135,27 @@ export function describeFrom(roads, communities, point) {
   if (road && community) return `${road}, near ${community}`;
   if (road) return road;
   if (community) return `Near ${community}`;
-  return "Not on a named road";
+  // Only claim "not on a named road" when the road data actually loaded; a failed download proves nothing.
+  return roads ? "Not on a named road" : "Place unavailable";
 }
 
 let loading = null;
 
-/** Loads the on-device data once; resolves to describe([lon, lat]) -> text. A missing file only loses that part. */
+/**
+ * Loads the on-device data; resolves to describe([lon, lat]) -> text, with `describe.complete` false when a file
+ * failed to load. A missing file only loses that part, and the next call tries the download again.
+ */
 export function loadDescriber() {
   if (!loading) {
     loading = Promise.all([
       fetchJson(regionFileUrl("graph")).then(buildRoadIndex).catch(() => null),
       fetchJson(regionFileUrl("addresses")).then(buildCommunities).catch(() => null),
-    ]).then(([roads, communities]) => (point) => describeFrom(roads, communities, point));
+    ]).then(([roads, communities]) => {
+      const describe = (point) => describeFrom(roads, communities, point);
+      describe.complete = Boolean(roads && communities);
+      if (!describe.complete) loading = null;
+      return describe;
+    });
   }
   return loading;
 }
