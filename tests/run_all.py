@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import harness  # noqa: E402
 
 ORDER = ["start", "places", "region", "addresses", "share", "labels", "step5", "step6", "step7", "step8", "step9",
-         "step11", "trace", "meter"]
+         "step11", "trace", "meter", "header"]
 TIMEOUT_S = 900
 
 

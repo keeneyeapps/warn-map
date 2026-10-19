@@ -135,21 +135,25 @@ def main():
             plan_with_stop(page)
             wide = boxes(page, BOXES)
             out["wide"] = wide
+            # The header band spans the top; the column and the map fill the space below it, unchanged otherwise.
+            band = boxes(page, ["#app-header"])["#app-header"]
+            top = band[3]
+            check(band[0] == 0 and band[1] == 0 and band[2] == 1280 and top <= 44, "header band spans the top")
             column = wide[".status-stack"]
-            check(column[0] == 0 and column[1] == 0 and column[2] == 380 and column[3] == 800, "column 380 x full height")
-            check(wide["#map"][0] == 380 and wide["#map"][2] == 1280 - 380 and wide["#map"][3] == 800,
-                  "map = viewport minus the column")
+            check(column[0] == 0 and column[1] == top and column[2] == 380 and column[3] == 800 - top, "column 380 wide, full height below the band")
+            check(wide["#map"][0] == 380 and wide["#map"][1] == top and wide["#map"][2] == 1280 - 380 and wide["#map"][3] == 800 - top,
+                  "map = viewport minus the column and the band")
             check(wide["#route-hazards-panel"][0] >= 0 and wide["#route-hazards-panel"][0] + wide["#route-hazards-panel"][2] <= 380,
                   "route panel inside the column")
             check(wide[".map-controls"][0] >= 380, "controls on the map")
             out["map canvas"] = page.evaluate("() => { const c = document.querySelector('#map canvas'); return [c.clientWidth, c.clientHeight]; }")
-            check(out["map canvas"] == [900, 800], "map canvas resized to the map area")
+            check(out["map canvas"] == [900, 800 - top], "map canvas resized to the map area")
             page.screenshot(path=os.path.join(SHOTS, "step9-wide.png"))
             page.locator("#settings-toggle").click()
             page.wait_for_timeout(300)
             settings = boxes(page, ["#settings-panel"])["#settings-panel"]
             out["wide settings"] = settings
-            check(settings[0] == 0 and settings[2] == 380 and settings[3] == 800, "settings sheet over the column")
+            check(settings[0] == 0 and settings[1] == top and settings[2] == 380 and settings[3] == 800 - top, "settings sheet over the column, below the band")
             top = page.evaluate("() => document.elementFromPoint(190, 400)?.closest('#settings-panel') !== null")
             check(top, "settings sheet is on top of the column")
             page.screenshot(path=os.path.join(SHOTS, "step9-wide-settings.png"))

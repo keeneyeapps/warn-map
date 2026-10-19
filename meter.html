@@ -14,9 +14,15 @@
     <link rel="stylesheet" href="./vendor/maplibre-gl.css">
     <link rel="stylesheet" href="./css/app.css">
     <script src="./vendor/pmtiles.js"></script>
+    <script type="module" src="./js/header.js"></script>
     <script type="module" src="./js/app.js"></script>
   </head>
   <body>
+    <header id="app-header" class="app-header">
+      <img class="app-header-moose" src="./icons/home-moose.webp" alt="" width="43" height="32">
+      <span class="app-header-warn">WARN</span>
+      <span id="app-header-variant" class="app-header-variant"></span>
+    </header>
     <main id="map" aria-label="Map"></main>
     <div class="status-stack">
       <div id="hazard-status" class="hazard-status" role="status" aria-live="polite">

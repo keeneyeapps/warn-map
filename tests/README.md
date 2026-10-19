@@ -59,6 +59,7 @@ commit), set `WARN_REPO` to its path.
 | `step11` | The Map/Alerts split: module rules (static and dynamic), plain Map with no cards or speech, WARN Alerts cards and spoken alerts, mute, repeat suppression, clean console. |
 | `trace` | The per-trip GPS trace (driver tools): one row per fix with the reject reasons, exact distance and wait stored next to the rounded figures, trimming to 10 traces and 20,000 rows, Export trace (CSV columns, on tap only), Delete traces, storage-full handling, nothing uploaded. |
 | `meter` | WARN Meter (`meter.html`) as its own unlisted page: the Map and Alerts never load driver.js or trace.js and show nothing meter-related even with old driver-mode flags and trip data, seven taps unlock nothing, `meter.html` has the meter, tariff fields, Trips, the fare line and carries over existing data, and works offline from its own cached copy; static module rules. |
+| `header` | The header band on the Map, Alerts and meter pages at 360, 390 and 1280 px: variant name, the Android black and yellow as CSS variables and computed colours, at most 44 px tall, unchanged moose image, nothing overlapped, controls clickable, no horizontal scroll, hidden in print, wide layout under the band, clean console. |
 
 `check_icons.py` is a helper for `step5`. `manual/` holds two scripts that are not part of the suite (a live-site
 check and a phone-upgrade simulation); see `manual/README.txt`.

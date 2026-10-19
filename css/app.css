@@ -3,6 +3,13 @@
   font-family: "Noto Sans", "Segoe UI", sans-serif;
   background: #171b1d;
   color: #f4f3ed;
+  /* The Android app's caution-stripe colours (WARN CautionStripe.kt: YELLOW 0xFFFDD835, DARK 0xFF000000). */
+  --brand-yellow: #fdd835;
+  --brand-black: #000;
+  /* The header band: 36 px of band plus the top safe-area inset, so it is never taller than 44 px on a phone
+     without a notch or cutout. Everything fixed to the top starts below --header-offset. */
+  --header-h: 36px;
+  --header-offset: calc(var(--header-h) + env(safe-area-inset-top, 0px));
 }
 
 * {
@@ -23,6 +30,55 @@ body {
   overflow: hidden;
 }
 
+/* The header band: black, yellow text and accents, the moose head (icons/home-moose.webp, unchanged) at the left,
+   then "WARN" and the variant name. The map sits below it, so the band never covers the map or intercepts a tap on it. */
+.app-header {
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--header-offset);
+  padding: env(safe-area-inset-top, 0px) max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left));
+  background: var(--brand-black);
+  color: var(--brand-yellow);
+  box-shadow: inset 0 -2px 0 var(--brand-yellow);
+  white-space: nowrap;
+}
+
+.app-header-moose {
+  flex: none;
+  width: 43px;
+  height: 32px;
+  margin-bottom: 2px;
+  object-fit: contain;
+}
+
+.app-header-warn {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+.app-header-variant {
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1;
+  text-overflow: ellipsis;
+}
+
+#map {
+  position: fixed;
+  inset: var(--header-offset) 0 0;
+  width: auto;
+  height: auto;
+}
+
 .map-controls {
   position: fixed;
   right: max(16px, env(safe-area-inset-right));
@@ -35,7 +91,7 @@ body {
 
 .status-stack {
   position: fixed;
-  top: max(12px, env(safe-area-inset-top));
+  top: calc(var(--header-offset) + 8px);
   left: max(12px, env(safe-area-inset-left));
   z-index: 3;
   display: grid;
@@ -639,7 +695,7 @@ body {
   }
 
   .status-stack {
-    top: max(78px, env(safe-area-inset-top));
+    top: calc(var(--header-offset) + 74px);
   }
 }
 
@@ -721,7 +777,7 @@ body {
   display: grid;
   gap: 5px;
   width: min(280px, calc(100vw - 32px));
-  max-height: calc(100dvh - 200px);
+  max-height: calc(100dvh - 200px - var(--header-offset));
   overflow-y: auto;
   padding: 9px 10px;
   border: 1px solid rgb(255 255 255 / 14%);
@@ -731,6 +787,12 @@ body {
   font-size: 12px;
   font-weight: 600;
   box-shadow: 0 3px 14px rgb(0 0 0 / 32%);
+}
+
+/* The meter page stacks the Start trip button under the panel as well: leave room for it so the panel never reaches
+   the header band. */
+html[data-app="meter"] .settings-panel {
+  max-height: calc(100dvh - 260px - var(--header-offset));
 }
 
 .driver-tariff input {
@@ -1259,19 +1321,19 @@ body {
 @media (min-width: 900px) {
   #map {
     position: fixed;
-    inset: 0 0 0 380px;
+    inset: var(--header-offset) 0 0 380px;
     width: auto;
     height: auto;
   }
 
   .status-stack {
-    top: 0;
+    top: var(--header-offset);
     bottom: 0;
     left: 0;
     width: 380px;
     align-content: start;
     gap: 8px;
-    padding: max(12px, env(safe-area-inset-top)) 12px 12px max(12px, env(safe-area-inset-left));
+    padding: 12px 12px 12px max(12px, env(safe-area-inset-left));
     overflow-y: auto;
     border-right: 1px solid rgb(255 255 255 / 10%);
     background: #171b1d;
@@ -1284,7 +1346,7 @@ body {
 
   .settings-panel {
     position: fixed;
-    top: 0;
+    top: var(--header-offset);
     bottom: 0;
     left: 0;
     width: 380px;
@@ -1318,6 +1380,10 @@ body {
 @media print {
   @page {
     margin: 12mm;
+  }
+
+  .app-header {
+    display: none !important;
   }
 
   :root,
