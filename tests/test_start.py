@@ -209,7 +209,7 @@ def main():
     # cannot be link-captured into the wrong installed app). Resolved the way a browser does, against the page URL.
     from urllib.parse import urljoin
     base = "https://keeneyeapps.github.io/warn-map/start.html"
-    names = ("manifest.webmanifest", "warn.webmanifest", "meter.webmanifest")
+    names = ("manifest.webmanifest", "warn.webmanifest", "meter.webmanifest", "watch.webmanifest")
     manifests = {name: json.load(open(os.path.join(REPO, name), encoding="utf-8")) for name in names}
     resolved = {name: {"id": m.get("id"), "start_url": urljoin(base, m["start_url"]), "scope": urljoin(base, m["scope"])}
                 for name, m in manifests.items()}
@@ -227,10 +227,10 @@ def main():
     meter = manifests["meter.webmanifest"]
     check(meter["id"] == "/warn-map/meter" and meter["name"] == "WARN Meter" and meter["short_name"] == "WARN Meter"
           and meter["start_url"] == "./meter.html" and meter["scope"] == "./meter.html", "meter manifest fields")
-    check(len({r["id"] for r in resolved.values()}) == 3 and len({r["scope"] for r in resolved.values()}) == 3
-          and len({r["start_url"] for r in resolved.values()}) == 3, "the three apps have distinct ids, scopes and start_urls")
+    check(len({r["id"] for r in resolved.values()}) == 4 and len({r["scope"] for r in resolved.values()}) == 4
+          and len({r["start_url"] for r in resolved.values()}) == 4, "the four apps have distinct ids, scopes and start_urls")
     check(all(manifests[n]["icons"] == manifests["warn.webmanifest"]["icons"] and manifests[n]["theme_color"] == manifests["warn.webmanifest"]["theme_color"]
-              and manifests[n]["background_color"] == manifests["warn.webmanifest"]["background_color"] for n in names), "same icons and theme in all three")
+              and manifests[n]["background_color"] == manifests["warn.webmanifest"]["background_color"] for n in names), "same icons and theme in all four")
     online = console[:offline_from]
     offline_unexpected = [c for c in console[offline_from:]
                           if not any(k in c[1] for k in ("ERR_INTERNET_DISCONNECTED", "ERR_FAILED", "Failed to fetch"))]

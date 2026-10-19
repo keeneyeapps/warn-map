@@ -33,7 +33,15 @@ The apps (2026-10-19: the trip meter left the Map for its own page):
                                  start.html, not the Map, not Alerts) and mentioned in no other page's text or
                                  metadata; it is precached by the service worker and served from its own cached
                                  copy like warn.html. Shared by URL only.
-  (d) WARN Drive    drive.html   FUTURE, not yet created. Alerts + the report inputs (js/report.js).
+  (d) WARN Watch    watch.html   UNLISTED, read-only, for a desktop monitor (working name). Map + a hazard list
+                                 panel: no inputs, no gear, no search, no route tools, no location. Its own entry
+                                 js/watch.js (not app.js) uses the Map's basemap and hazards.js (polled every 30 s)
+                                 and js/place-describe.js (nearest named road and community from the on-device
+                                 graph and address index). Manifest id /warn-map/watch, start_url and scope
+                                 ./watch.html. Linked from nowhere (not start.html, README, or any page) and
+                                 mentioned in no other page's text or metadata; precached and served from its own
+                                 cached copy. Shared by URL only.
+  (e) WARN Drive    drive.html   FUTURE, not yet created. Alerts + the report inputs (js/report.js).
 
 Module rules:
   - cards.js and alerts.js may be imported only by warn.html and drive.html. app.js loads them by dynamic
@@ -45,13 +53,18 @@ Module rules:
     that explicitly opts in here. app.js loads it by dynamic import only when <html data-app> is "meter"; no
     static import of it may appear anywhere. routing.js never imports it: the planner fare line exists only
     after the meter page installs a formatter (setFareFormatter), so no stored flag can turn it on elsewhere.
+  - watch.html loads none of cards.js, alerts.js, driver.js, trace.js, report.js, and not app.js, routing.js or
+    addresses.js either: its only modules are header.js and watch.js (with hazards.js, map.js, region.js,
+    config.js and place-describe.js behind it). It never asks for the device's location and shows only what the
+    public_hazards view exposes: nothing about any driver or vehicle. It is a Map branch with its own markup, not
+    the shared shell below.
   - index.html must never load cards.js, alerts.js, report.js or driver.js, statically or dynamically, and
     must never load anything that writes.
   - No page other than meter.html may mention trips, fares, tariffs or a meter, in markup, text or metadata
     (tests: step8, meter, start). The old driver-mode flag (`warn-map-driver-mode`) and `?driver` query are
     gone and ignored; the stored trips, tariff and trace keys are unchanged, so existing data carries over to the
     meter page.
-  - The pages share one shell: keep their markup identical apart from <html data-app / data-app-name>,
+  - The Map, Alerts and Meter pages share one shell: keep their markup identical apart from <html data-app / data-app-name>,
     title, apple-mobile-web-app-title, manifest link, About heading, and the #alert-cards host (alerts pages
     only). One service worker serves all of them.
 
@@ -60,10 +73,11 @@ not a write in this sense.
 -->
 
 - Family tree: `index.html` (WARN Map) is the trunk. `meter.html` (WARN Meter, unlisted) = Map + `driver.js`.
+  `watch.html` (WARN Watch, unlisted, working name) = Map + a read-only hazard list panel (`watch.js`).
   `warn.html` (WARN Alerts, working name) = Map + `cards.js` + `alerts.js`. The future `drive.html` (WARN Drive)
   = Alerts + inputs + `report.js`. `driver.js` only on `meter.html` (or a future UI that opts in); `cards.js` and
   `alerts.js` only on `warn.html` and `drive.html`; `report.js` only on `drive.html`; the Map loads none of
-  them. No page other than the meter page mentions trips or fares.
+  them. No page other than the meter page mentions trips or fares; no page links to the meter or watch pages.
 
 ## Layout
 
@@ -73,7 +87,7 @@ not a write in this sense.
 - `js/config.js`: public Supabase project URL, anon key, and `REGION_FILE` (which region pack to load).
 - `js/region.js`: loads the region pack at startup; other modules take paths, bbox, and start view from it.
 - `js/addresses.js`: typed-address and named-place matching over the on-device address and places indexes (never queried over the network).
-- `start.html`: the public entry point to share (two cards: WARN Map and WARN Alerts, plus a Share button). Static, no manifest, never installable. The root (`index.html`) stays the Map because installed phones start there. It must not mention driver mode, tariffs, fleet features, or the meter page (no link to meter.html, none of the words driver, tariff, fare, taxi, fleet or meter).
+- `start.html`: the public entry point to share (two cards: WARN Map and WARN Alerts, plus a Share button). Static, no manifest, never installable. The root (`index.html`) stays the Map because installed phones start there. It must not mention driver mode, tariffs, fleet features, the meter page or the Watch page (no link to meter.html or watch.html, none of the words driver, tariff, fare, taxi, fleet or meter).
 - `warn.html` / `warn.webmanifest`: WARN Alerts (working name), the same shell as `index.html` under its own name and manifest, plus `#alert-cards` and `data-app="alerts"`. Its manifest scope is `./warn.html` only: a scope of `./` would contain the Map's start_url, and Chrome would open Map links in an installed Drive. The Map keeps scope `./`.
 - `js/hazards.js`: read-only hazard polling, GeoJSON layers, and the Map's plain popup (`setHazardPopupRenderer` lets an alerts page swap in a card).
 - `js/cards.js`: hazard cards after the Android card (colour band, name, distance, age, confirmations; a disabled row for the three action buttons). Alerts pages only.
@@ -81,6 +95,8 @@ not a write in this sense.
 - `js/report.js`: placeholder for WARN Drive reporting; the only module that may ever write, loaded by the future `drive.html` only.
 - `js/print.js`: route printing; captures the map canvas at print time and builds the print-only sheet (`@media print` in `css/app.css`).
 - Header band (`#app-header` on `index.html`, `warn.html`, `meter.html`; not `start.html`): a slim black band (`--brand-black` #000) with yellow text and accents (`--brand-yellow` #FDD835, both the Android app's `CautionStripe.kt` values), the unchanged `icons/home-moose.webp`, "WARN" in bold, then the variant name from `<html data-app-name>` filled by `js/header.js`; at most 44 px (36 px plus the safe-area inset), the map and every top-anchored control start below `--header-offset`, hidden in print.
+- `watch.html` / `watch.webmanifest`: WARN Watch (see the family tree). A kiosk-style page: wake lock, refresh on returning to the tab, a quiet reload (no prompt) when a new service-worker version activates, "Updated hh:mm:ss", and a stale notice with the last good time when a refresh fails (the last data stays on screen). Its manifest scope is `./watch.html` only.
+- `js/watch.js`: the Watch page's entry and panel (summary by category, list newest first, row click flies the map and opens the popup). `js/place-describe.js`: "Road name, near Community" from `graph/kenai-roads.json` and the address index only; no outside service.
 - `js/driver.js`: the driver tools (tariff, planner fare line, trip meter, saved trips), loaded by `app.js` on `meter.html` only and always on there. No other page loads it, so no fare, tariff, or trip UI exists anywhere else. Fares follow a cab meter: 1/14-mile steps plus $0.50 per full cumulative minute of wait. Tariff and trip data stay in localStorage only (keys unchanged from the Map's driver mode).
 - `meter.html` / `meter.webmanifest`: WARN Meter, the same shell as `index.html` under its own name and manifest, `data-app="meter"`. Unlisted: never linked from or mentioned by any other page. Its manifest scope is `./meter.html` only.
 - `js/trace.js`: the per-trip GPS trace, used by `driver.js` only. One CSV row per fix the trip meter saw (accepted or rejected, with the reject reason, the straight and snapped metres, metres added and wait added), for calibrating the meter against a real cab meter. The last 10 trips, at most 20,000 rows each, are kept in localStorage on the device (`warn-map-traces`, the running trip in `warn-map-trace-running`), apart from the 200-trip list. It is never uploaded or sent anywhere. It leaves the device only when the driver taps "Export trace" (a CSV saved locally); "Delete traces" removes all of them, and "Clear all" trips removes them too. The note saying so is in the meter page's Trips section, above the About card. The trip record also keeps the exact unrounded distance (`metersExact`) and wait (`waitSecondsExact`) beside the rounded figures. A change to what the trace stores needs the privacy re-read: the published policy page (keeneyeapps.github.io/warn/privacy.html) does not yet mention trip traces. [GAP] it is in another repo and has not been edited.

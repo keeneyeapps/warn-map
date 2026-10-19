@@ -279,7 +279,13 @@ export function openHazardPopup(map, properties, coordinate) {
     .addTo(map);
 }
 
-export function startHazardLayer(map, { onHazardsUpdate = () => {} } = {}) {
+/**
+ * Starts the live hazard layer. `onHazardsUpdate(features)` runs after every successful refresh and when the live
+ * count changes; `intervalMs` is the poll period (the Map's default is a minute; WARN Watch polls every 30 s);
+ * `onStatus({ ok, lastSuccessAt })` runs after every refresh attempt, so a page can show a failed refresh. The status
+ * strip (#hazard-status, #hazard-summary) is optional: a page without it just skips it.
+ */
+export function startHazardLayer(map, { onHazardsUpdate = () => {}, intervalMs = REFRESH_INTERVAL_MS, onStatus = () => {} } = {}) {
   const status = document.querySelector("#hazard-summary");
   const statusStrip = document.querySelector("#hazard-status");
   map.addSource(SOURCE_ID, {
@@ -343,6 +349,7 @@ export function startHazardLayer(map, { onHazardsUpdate = () => {} } = {}) {
   }
 
   function updateStatus(now) {
+    if (!status || !statusStrip) return;
     if (lastSuccessfulAt === null) {
       status.textContent = refreshFailed ? "Hazards unavailable · stale" : "Loading hazards";
       statusStrip.classList.toggle("is-stale", refreshFailed);
@@ -392,15 +399,17 @@ export function startHazardLayer(map, { onHazardsUpdate = () => {} } = {}) {
       lastSuccessfulAt = Date.now();
       refreshFailed = false;
       updateLayer(lastSuccessfulAt, true);
+      onStatus({ ok: true, lastSuccessAt: lastSuccessfulAt });
     } catch {
       refreshFailed = true;
       updateStatus(Date.now());
+      onStatus({ ok: false, lastSuccessAt: lastSuccessfulAt });
     }
   }
 
   updateStatus(Date.now());
   refresh();
-  window.setInterval(refresh, REFRESH_INTERVAL_MS);
+  window.setInterval(refresh, intervalMs);
   window.setInterval(() => updateLayer(Date.now()), 1000);
   return { refresh, lastSuccessAt: () => lastSuccessfulAt };
 }

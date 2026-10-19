@@ -1364,6 +1364,201 @@ html[data-app="meter"] .settings-panel {
   }
 }
 
+/* ---- WARN Watch (watch.html): a read-only hazard board for a desktop monitor. The map fills the left, a black panel
+   with the brand yellow summarises and lists every active hazard on the right, in large type. ---- */
+html[data-app="watch"] {
+  --watch-panel-w: clamp(380px, 28vw, 560px);
+}
+
+html[data-app="watch"] #map {
+  inset: var(--header-offset) var(--watch-panel-w) 0 0;
+}
+
+.watch-panel {
+  position: fixed;
+  top: var(--header-offset);
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  width: var(--watch-panel-w);
+  border-left: 2px solid var(--brand-yellow);
+  background: var(--brand-black);
+  color: #f4f3ed;
+  font-size: 18px;
+}
+
+.watch-summary {
+  flex: none;
+  padding: 14px 20px 12px;
+  border-bottom: 1px solid rgb(253 216 53 / 40%);
+}
+
+.watch-count {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+#watch-count-number {
+  color: var(--brand-yellow);
+  font-size: 60px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.watch-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.watch-category {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.watch-dot {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--dot);
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 40%);
+}
+
+.watch-category-count {
+  color: var(--brand-yellow);
+  font-weight: 800;
+}
+
+.watch-updated {
+  margin: 10px 0 0;
+  color: #d6d4cc;
+  font-size: 18px;
+}
+
+.watch-panel.is-stale .watch-updated {
+  color: var(--brand-yellow);
+  font-weight: 700;
+}
+
+.watch-stale {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border-radius: 4px;
+  background: var(--brand-yellow);
+  color: #000;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.watch-stale[hidden] {
+  display: none;
+}
+
+.watch-list {
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.watch-item {
+  border-bottom: 1px solid rgb(255 255 255 / 12%);
+}
+
+.watch-row {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 12px 20px 12px 16px;
+  border: 0;
+  border-left: 8px solid var(--band);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.watch-row:hover {
+  background: rgb(253 216 53 / 12%);
+}
+
+.watch-row:focus-visible {
+  outline: 3px solid var(--brand-yellow);
+  outline-offset: -3px;
+}
+
+.watch-row.is-selected {
+  background: rgb(253 216 53 / 20%);
+}
+
+.watch-row.is-new {
+  animation: watch-new 10s ease-out;
+}
+
+@keyframes watch-new {
+  0%,
+  60% {
+    background: rgb(253 216 53 / 45%);
+  }
+
+  100% {
+    background: transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .watch-row.is-new {
+    animation: none;
+    background: rgb(253 216 53 / 30%);
+  }
+}
+
+.watch-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.watch-title {
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.watch-age {
+  color: var(--brand-yellow);
+  font-size: 18px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.watch-place {
+  font-size: 19px;
+}
+
+.watch-category-name,
+.watch-confirmations {
+  color: #c9c7be;
+  font-size: 16px;
+}
+
+.watch-empty {
+  padding: 24px 20px;
+  color: #d6d4cc;
+  font-size: 20px;
+}
+
 /* ---- Printing a route (js/print.js builds #print-sheet at print time). ---- */
 .print-sheet {
   display: none;
