@@ -115,13 +115,13 @@ POST /auth/v1/logout?scope=global              (Bearer: current access token)  -
   minutes idle".
 - `scope=global` revokes every refresh token of the account server-side, so a copied refresh token is useless; the
   same call runs on the page's own **Sign out** button.
-- On `pagehide` (tab closing) the page sends the same logout with `fetch(..., {keepalive: true})` (best effort;
-  `sendBeacon` cannot carry the Authorization header). **Measured while building slice 1 (2026-10-20, headless
-  Edge): a keepalive request that needs a CORS preflight, as this one does because of the Authorization header,
-  is never delivered from an unloading page.** So in Chromium-based browsers a reload resumes the session from
-  `sessionStorage`, and closing the tab leaves a server session nobody can use: its refresh token died with the
-  tab, and the gate's 12 h / 75 min rules make it inert. The idle timer and the Sign out button are the real
-  sign-outs; the attempt stays in the code because it costs nothing.
+- **No logout on leaving the page (decision B, owner, 2026-10-20).** A `pagehide` keepalive logout was built
+  first; a headless-Edge probe suggested it was never delivered, but real Edge delivered it on F5 and signed the
+  owner out mid-task (session row gone at 23:37 UTC, the reloaded page's refresh refused). It was removed. The
+  Sign out button and the 30-minute idle timer are the only sign-outs; a reload resumes the session from
+  `sessionStorage`; a closed tab leaves a server session nobody can use (its refresh token died with the tab)
+  that the gate's 12 h / 75 min rules age out. The page names the server's reason when a renewal is refused, and
+  treats "already used" within seconds of loading as a reload during a rotation (sign in again), not a fault.
 
 ### 2.4 Sign-out must delete the server-side session: check it
 
