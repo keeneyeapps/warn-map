@@ -116,8 +116,12 @@ POST /auth/v1/logout?scope=global              (Bearer: current access token)  -
 - `scope=global` revokes every refresh token of the account server-side, so a copied refresh token is useless; the
   same call runs on the page's own **Sign out** button.
 - On `pagehide` (tab closing) the page sends the same logout with `fetch(..., {keepalive: true})` (best effort;
-  `sendBeacon` cannot carry the Authorization header). If it does not arrive, the tab's refresh token is gone with
-  `sessionStorage` anyway, and the session row ages out of the gate's rules.
+  `sendBeacon` cannot carry the Authorization header). **Measured while building slice 1 (2026-10-20, headless
+  Edge): a keepalive request that needs a CORS preflight, as this one does because of the Authorization header,
+  is never delivered from an unloading page.** So in Chromium-based browsers a reload resumes the session from
+  `sessionStorage`, and closing the tab leaves a server session nobody can use: its refresh token died with the
+  tab, and the gate's 12 h / 75 min rules make it inert. The idle timer and the Sign out button are the real
+  sign-outs; the attempt stays in the code because it costs nothing.
 
 ### 2.4 Sign-out must delete the server-side session: check it
 
