@@ -1,7 +1,10 @@
 # Master UI: hosting, sign-in and build plan (PLAN ONLY, 2026-10-20)
 
-**Status: plan reviewed; the hosting and session decisions below are made (owner, 2026-10-20). Slice 1 is being
-built in the private repo `gmessy30/warn-admin`; nothing is deployed and no Cloudflare project exists yet.**
+**Status: plan reviewed; the hosting and session decisions below are made (owner, 2026-10-20). Slice 1 is built
+and pushed in the private repo `gmessy30/warn-admin` (commits `1d03476` to `4ed65a0`; automated suite 3 of 3 passing
+on 2026-10-21); the manual run with the real accounts is pending. Nothing is deployed and no Cloudflare project
+exists yet. The `pagehide` logout was dropped on purpose (decision B, 2.3, confirmed by the owner 2026-10-21):
+a reload also fires `pagehide`, so it signed the owner out on every reload.**
 Companion to `master-ui-backend.md` (the design) and WARN's `supabase/migrations/049_admin_gate.sql` (applied
 2026-10-20, 27/27 verified). Tags as in that note: **[R]** recorded, **[I]** inferred, **[GAP]** decide.
 
