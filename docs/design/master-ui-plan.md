@@ -202,6 +202,20 @@ order of work (2): confirm the JWT expiry, add the origin to Redirect URLs, read
 Each slice ships with its migration's verify script and a page-side acceptance list, and nothing in a slice is
 reachable from the page before its migration is applied (the RPC simply does not exist).
 
+### 4.1 Basemap look and shared settings (for slice 2)
+
+- **The dark theme stays.** Its stock roads and names sit barely above the land (roads 1.3-1.8:1, names 2.1-3.8:1),
+  so they were tuned on the read-only hazard board (2026-10-22), colours and sizes only, over the vendored theme:
+  - roads: highway `#a0a0a0`, major `#858585`, minor `#6e6e6e` (bridges and ramps alike; tunnels unchanged);
+  - names: road `#b5b5b5`, town `#d6d6d6`, neighbourhood `#a8a8a8`;
+  - every label's text and halo at **1.3x**; major road names allowed from zoom 10; hazard labels drawn below the
+    town names so towns win a collision.
+- These live in the board's settings file (`orgs/default/org.json`, read by its `map.js`). **The Master UI's map
+  slice should adopt the same values from the start, ideally as one shared set read by both pages,** not a second
+  tuned copy that drifts.
+- [R] **The tiles carry no road names below zoom 12** (major roads are in them, unnamed). No style setting shows road
+  names at a wider view; that would need a tile rebuild (`tools/build_tiles.py`) or another name source.
+
 ## 5. Risks, and what to decide or create before slice 1
 
 **Decide**
