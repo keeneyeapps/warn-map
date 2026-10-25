@@ -51,6 +51,17 @@ def click_share(page, store):
     shared = page.evaluate(f'() => window.{store}.at(-1)')
     return shared['text'] if isinstance(shared, dict) else shared
 
+SAVED_TARIFF = """
+(() => {
+  // A tariff saved on the device, as a driver who has set one has it (the meter has no built-in tariff).
+  for (const [key, value] of [["warn-map-tariff-start", "3.75"], ["warn-map-tariff-increment", "0.20"],
+      ["warn-map-fare-rate", "2.80"], ["warn-map-tariff-wait-rate", "0.50"], ["warn-map-tariff-wait-below", "12"]]) {
+    try { if (localStorage.getItem(key) === null) localStorage.setItem(key, value); } catch {}
+  }
+})();
+"""
+
+
 def share_test(pw, out, console, external, page_path, with_fare):
     proc = serve(8765)
     try:
@@ -60,6 +71,7 @@ def share_test(pw, out, console, external, page_path, with_fare):
         # The fare line belongs to WARN Meter (meter.html) alone. The Map run also carries the old driver-mode flag,
         # which must change nothing: no stored flag can turn the fare line on elsewhere.
         context.add_init_script("localStorage.setItem('warn-map-driver-mode', '1')")
+        context.add_init_script(SAVED_TARIFF)  # a driver's saved tariff; the Map must still show no fare
         context.on('request', lambda req: external.append((req.method, req.url)) if urlparse(req.url).hostname not in ('localhost', '127.0.0.1') else None)
         page = context.new_page()
         page.on('console', lambda m: console.append((m.type, m.text, m.location.get('url'))) if m.type in ('error', 'warning') else None)

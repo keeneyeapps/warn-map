@@ -29,6 +29,10 @@ OLD_STATE = """
   sessionStorage.setItem("seeded", "1");
   localStorage.setItem("warn-map-driver-mode", "1");
   localStorage.setItem("warn-map-tariff-start", "4.10");
+  localStorage.setItem("warn-map-tariff-increment", "0.20");
+  localStorage.setItem("warn-map-fare-rate", "2.80");
+  localStorage.setItem("warn-map-tariff-wait-rate", "0.50");
+  localStorage.setItem("warn-map-tariff-wait-below", "12");
   localStorage.setItem("warn-map-trips", JSON.stringify([{ startTime: 1760000000000, endTime: 1760000900000, miles: 6.84,
     waitSeconds: 72, fare: 23.45, startPlace: "Kenai", endPlace: "Soldotna" }]));
 })();

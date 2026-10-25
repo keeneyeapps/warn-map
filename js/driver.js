@@ -18,19 +18,28 @@ const METERS_PER_MILE = 1609.344;
 // Shown with the live meter, on the trip summary, and at the end of every shared fare text.
 export const ESTIMATE_NOTE = "Estimate only. Not a certified taximeter. Not for charging passengers.";
 
+// There is no default tariff: until the driver has saved all five values, no fare is shown anywhere. `example` is
+// only the greyed placeholder in each field; it is never used to work out a fare. Saved values (these storage keys)
+// are read as they are, never rewritten.
 export const TARIFF_FIELDS = [
-  { key: "start", storage: "warn-map-tariff-start", label: "Start fare", unit: "$", fallback: 3.75,
+  { key: "start", storage: "warn-map-tariff-start", label: "Start fare", unit: "$", example: 3.75,
     help: "Charged once when a trip starts." },
-  { key: "increment", storage: "warn-map-tariff-increment", label: "Increment", unit: "$", fallback: 0.20,
+  { key: "increment", storage: "warn-map-tariff-increment", label: "Increment", unit: "$", example: 0.20,
     help: "The fare rises in steps of this amount." },
   // The planner's earlier "Rate per mile" setting used this key, so a saved rate carries over.
-  { key: "ratePerMile", storage: "warn-map-fare-rate", label: "Rate per mile", unit: "$", fallback: 2.80,
+  { key: "ratePerMile", storage: "warn-map-fare-rate", label: "Rate per mile", unit: "$", example: 2.80,
     help: "Distance charge; one increment every increment ÷ rate miles." },
   { key: "waitPerMinute", storage: "warn-map-tariff-wait-rate", label: "Wait rate per minute", unit: "$",
-    fallback: 0.50, help: "Waiting charge, per full minute of cumulative waiting; partial minutes are not charged." },
-  { key: "waitBelowMph", storage: "warn-map-tariff-wait-below", label: "Waiting below", unit: "mph", fallback: 12,
-    help: "Time counts as waiting below this speed, after 3 slow fixes in a row." },
+    example: 0.50, help: "Waiting charge, per full minute of cumulative waiting; partial minutes are not charged." },
+  { key: "waitBelowMph", storage: "warn-map-tariff-wait-below", label: "Waiting below", unit: "mph", example: 12,
+    help: "Time counts as waiting below this speed, after 3 slow fixes in a row. Until you set it, the wait time "
+      + "shown is counted below the example speed." },
 ];
+
+// The example values by key, for tests and the placeholders; not a tariff the meter ever applies by itself.
+export const EXAMPLE_TARIFF = Object.fromEntries(TARIFF_FIELDS.map((field) => [field.key, field.example]));
+
+export const TARIFF_PROMPT = "Set your tariff to see an estimated fare";
 
 function readStorage(key) {
   try {
@@ -49,13 +58,26 @@ function writeStorage(key, value) {
   }
 }
 
+function storedTariffValue(field) {
+  const stored = Number.parseFloat(readStorage(field.storage) ?? "");
+  return Number.isFinite(stored) && stored > 0 ? stored : null;
+}
+
+/** The driver's own tariff, or null until every one of the five values has been saved on this device. */
 export function tariff() {
   const values = {};
   for (const field of TARIFF_FIELDS) {
-    const stored = Number.parseFloat(readStorage(field.storage) ?? "");
-    values[field.key] = Number.isFinite(stored) && stored > 0 ? stored : field.fallback;
+    const stored = storedTariffValue(field);
+    if (stored === null) return null;
+    values[field.key] = stored;
   }
   return values;
+}
+
+// The speed below which time counts as waiting: the driver's own once saved, else the example (wait time only;
+// without a full tariff it never becomes a charge).
+function waitBelowMph() {
+  return storedTariffValue(TARIFF_FIELDS.find((field) => field.key === "waitBelowMph")) ?? EXAMPLE_TARIFF.waitBelowMph;
 }
 
 /**
@@ -75,7 +97,9 @@ export function waitMinutes(waitSeconds) {
   return Math.floor(Math.round(waitSeconds) / 60);
 }
 
+/** The fare in dollars, or null when no tariff has been set. */
 export function fareFor(miles, waitSeconds = 0, rates = tariff()) {
+  if (!rates) return null;
   const cents = Math.round(rates.start * 100)
     + Math.round(rates.increment * 100) * distanceUnits(miles, rates)
     + Math.round(rates.waitPerMinute * 100) * waitMinutes(waitSeconds);
@@ -124,7 +148,7 @@ function tripShareText(trip) {
   const lines = [];
   if (trip.startPlace || trip.endPlace) lines.push(`${trip.startPlace || "Start"} → ${trip.endPlace || "End"}`);
   lines.push(`${trip.miles.toFixed(1)} mi · wait ${formatWait(trip.waitSeconds)}`);
-  lines.push(`Est. fare ${formatMoney(trip.fare)}`);
+  if (Number.isFinite(trip.fare)) lines.push(`Est. fare ${formatMoney(trip.fare)}`);
   lines.push(`${day}, ${time(start)}–${time(end)}`);
   lines.push(ESTIMATE_NOTE);
   return lines.join("\n");
@@ -282,13 +306,12 @@ export function setupDriverTools({
   }
 
   function startTrip() {
-    const rates = tariff();
     trip = {
       startTime: Date.now(),
       meters: 0,
       waitSeconds: 0,
       slowSeconds: [],
-      waitBelowMs: rates.waitBelowMph * 0.44704,
+      waitBelowMs: waitBelowMph() * 0.44704,
       lastFix: null,
       startPlace: null,
     };
@@ -330,12 +353,17 @@ export function setupDriverTools({
 
   function tariffSection() {
     const section = element("section", { className: "driver-tariff", id: "driver-tariff" });
-    section.append(element("h2", { textContent: "Tariff" }));
+    section.append(element("h2", { textContent: "Tariff" }), element("p", {
+      className: "driver-help", id: "driver-tariff-note",
+      textContent: "Enter all five of your own values to see an estimated fare. The greyed numbers are only an "
+        + "example and are never used.",
+    }));
     for (const field of TARIFF_FIELDS) {
       const id = `tariff-${field.key}`;
+      const example = field.unit === "$" ? field.example.toFixed(2) : String(field.example);
       const input = element("input", {
         id, type: "number", inputMode: "decimal", min: "0", step: field.unit === "mph" ? "1" : "0.01",
-        placeholder: String(field.fallback), autocomplete: "off",
+        placeholder: `Example: ${example}`, autocomplete: "off",
       });
       input.value = readStorage(field.storage) ?? "";
       input.addEventListener("input", () => {
@@ -343,7 +371,7 @@ export function setupDriverTools({
         onTariffChange();
         render();
       });
-      const label = element("label", { htmlFor: id, textContent: `${field.label} (${field.unit === "$" ? `$${field.fallback.toFixed(2)}` : `${field.fallback} mph`} default)` });
+      const label = element("label", { htmlFor: id, textContent: `${field.label} (${field.unit})` });
       section.append(label, input, element("p", { className: "driver-help", textContent: field.help }));
     }
     return section;
@@ -387,7 +415,8 @@ export function setupDriverTools({
       list.append(element("li", {}, [
         element("span", {
           className: "driver-trip-text",
-          textContent: `${when} · ${saved.miles.toFixed(1)} mi · wait ${formatWait(saved.waitSeconds)} · ${formatMoney(saved.fare)}`,
+          textContent: `${when} · ${saved.miles.toFixed(1)} mi · wait ${formatWait(saved.waitSeconds)}`
+            + (Number.isFinite(saved.fare) ? ` · ${formatMoney(saved.fare)}` : ""),
         }),
         element("div", { className: "driver-actions" }, actions),
       ]));
@@ -408,11 +437,18 @@ export function setupDriverTools({
 
   function tripControls(summary) {
     const box = element("div", { className: "driver-trip", id: "driver-trip" });
+    // No tariff yet: distance and wait only, and one line saying how to get a fare.
+    const prompt = tariff() === null
+      ? element("p", { className: "driver-estimate-note", id: "driver-tariff-prompt", textContent: TARIFF_PROMPT })
+      : null;
     if (trip) {
+      const fare = tripFare();
       box.append(element("p", {
         className: "driver-trip-live", id: "driver-trip-live",
-        textContent: `Trip ${formatMiles(trip.meters)} · wait ${formatWait(trip.waitSeconds)} · Est. fare ${formatMoney(tripFare())}`,
+        textContent: `Trip ${formatMiles(trip.meters)} · wait ${formatWait(trip.waitSeconds)}`
+          + (fare === null ? "" : ` · Est. fare ${formatMoney(fare)}`),
       }), element("p", { className: "driver-estimate-note", id: "driver-estimate-note", textContent: ESTIMATE_NOTE }));
+      if (prompt) box.append(prompt);
       const end = element("button", { type: "button", className: "driver-trip-button", id: "end-trip", textContent: "End trip" });
       end.addEventListener("click", endTrip);
       box.append(end);
@@ -423,11 +459,13 @@ export function setupDriverTools({
       dismiss.addEventListener("click", () => render());
       box.append(
         element("p", { className: "driver-trip-summary", id: "driver-trip-summary", textContent: tripShareText(summary) }),
+        ...(prompt ? [prompt] : []),
         element("div", { className: "driver-actions" }, [share, dismiss]),
       );
     } else {
       const start = element("button", { type: "button", className: "driver-trip-button", id: "start-trip", textContent: "Start trip" });
       start.addEventListener("click", startTrip);
+      if (prompt) box.append(prompt);
       box.append(start);
     }
     return box;

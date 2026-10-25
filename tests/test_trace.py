@@ -29,6 +29,11 @@ COLUMNS = ["t_s", "lat", "lon", "accuracy_m", "speed_ms", "interval_s", "straigh
 INIT = """
 (() => {
   navigator.share = () => Promise.resolve();
+  // A tariff saved on the device, as a driver who has set one has it (the meter has no built-in tariff).
+  for (const [key, value] of [["warn-map-tariff-start", "3.75"], ["warn-map-tariff-increment", "0.20"],
+      ["warn-map-fare-rate", "2.80"], ["warn-map-tariff-wait-rate", "0.50"], ["warn-map-tariff-wait-below", "12"]]) {
+    try { if (localStorage.getItem(key) === null) localStorage.setItem(key, value); } catch {}
+  }
   const watchers = new Map();
   let nextId = 1;
   const kenai = { coords: { latitude: 60.5603, longitude: -151.2235, accuracy: 10, speed: null, heading: null }, timestamp: Date.now() };
