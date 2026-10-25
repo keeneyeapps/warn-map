@@ -771,6 +771,7 @@ export function setupRouting(map, {
   // only while app.js has installed a formatter, which it does on data-app="meter" and nowhere else; no stored flag
   // can turn it on.
   let fareFormatter = null;
+  let fareNote = "";
   function fareText(totalTenths) {
     return fareFormatter ? fareFormatter(totalTenths / 10) : "";
   }
@@ -838,6 +839,7 @@ export function setupRouting(map, {
 
     const fare = fareText(totalTenths);
     if (fare) lines.push(fare);
+    if (fare && fareNote) lines.push(fareNote);
     return lines.join("\n");
   }
 
@@ -1728,9 +1730,11 @@ export function setupRouting(map, {
     setHazards,
     onLocationFix,
     refreshPlan: () => renderPlan(),
-    // Installs the fare-line formatter (miles -> text) and redraws the plan. Called by the meter page only.
-    setFareFormatter: (formatter) => {
+    // Installs the fare-line formatter (miles -> text) and the note that ends a shared text carrying a fare, and
+    // redraws the plan. Called by the meter page only.
+    setFareFormatter: (formatter, note = "") => {
       fareFormatter = formatter;
+      fareNote = note;
       renderPlan();
     },
     // Road distance between two [lon, lat] points along the graph (shortest path), or null; used by the trip meter.

@@ -151,7 +151,7 @@ def main():
             check(page.locator("#start-trip").count() == 1, "meter page: Start trip")
             page.evaluate("([s, d]) => window.__WARN_MAP_TEST__.route(s, d)", [KENAI, SOLDOTNA])
             page.wait_for_function("() => document.querySelector('.route-fare')", timeout=30000)
-            check(page.locator(".route-fare").inner_text().startswith("Fare $"), "meter page: planner fare line")
+            check(page.locator(".route-fare").inner_text().startswith("Est. fare $"), "meter page: planner fare line")
             page.locator("#settings-toggle").click()
             check(page.locator("#driver-tariff input").count() == 5, "meter page: five tariff fields")
             check(page.locator("#tariff-start").input_value() == "4.10", "meter page: existing tariff value carries over")

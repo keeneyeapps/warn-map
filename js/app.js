@@ -281,7 +281,8 @@ map.once("style.load", () => {
     // The only place driver.js is ever loaded: the trip meter, tariff, Trips list and the planner fare line. The page
     // itself is the opt-in, so there is no unlock. The Map and Alerts never reach this branch.
     import("./driver.js").then((driver) => {
-      routingController.setFareFormatter((miles) => `Fare ${driver.formatMoney(driver.fareFor(miles))}`);
+      routingController.setFareFormatter((miles) => `Est. fare ${driver.formatMoney(driver.fareFor(miles))}`,
+        driver.ESTIMATE_NOTE);
       const driverTools = driver.setupDriverTools({
         settingsPanel: document.querySelector("#settings-panel"),
         controls: document.querySelector(".map-controls"),

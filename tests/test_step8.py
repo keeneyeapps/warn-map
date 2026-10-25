@@ -41,6 +41,7 @@ INIT = """
 """
 
 MENTION = r"\b(fares?|tariffs?|trips?)\b"
+ESTIMATE_NOTE = "Estimate only. Not a certified taximeter. Not for charging passengers."
 
 
 def serve():
@@ -131,7 +132,7 @@ def main():
             page.evaluate("([s, d]) => window.__WARN_MAP_TEST__.route(s, d)", [KENAI, SOLDOTNA])
             page.wait_for_function("() => document.querySelector('.route-total')", timeout=30000)
             out["planner fare"] = page.locator(".route-fare").inner_text() if page.locator(".route-fare").count() else None
-            check(out["planner fare"] is not None and out["planner fare"].startswith("Fare $"), "meter page: the planner shows a fare line")
+            check(out["planner fare"] is not None and out["planner fare"].startswith("Est. fare $"), "meter page: the planner shows a fare line")
             page.locator("#clear-route").click()
             page.locator("#settings-toggle").click()
             out["tariff labels"] = page.locator("#driver-tariff label").all_inner_texts()
@@ -221,7 +222,8 @@ def main():
               .fareFor(state.meters / 1609.344, state.waitSeconds)""", final)
             out["expected fare"] = expected
             check(abs(final["fare"] - expected) < 1e-9, "fare matches the formula")
-            check(f"${expected:.2f}" in out["live line"], "live line shows the fare")
+            check(f"Est. fare ${expected:.2f}" in out["live line"], "live line shows the estimated fare")
+            check(page.locator("#driver-estimate-note").inner_text() == ESTIMATE_NOTE, "live meter shows the estimate note")
 
             page.locator("#end-trip").click()
             page.locator("#driver-trip-summary").wait_for(timeout=10000)
@@ -229,6 +231,11 @@ def main():
             page.locator(".driver-trip .driver-button", has_text="Share").click()
             page.wait_for_function("() => window.__shared.length >= 1")
             out["share"] = page.evaluate("() => window.__shared.at(-1)").split("\n")
+            check(any(line.startswith("Est. fare $") for line in out["summary"]) and out["summary"][-1] == ESTIMATE_NOTE,
+                  "summary: Est. fare, and the estimate note last")
+            check(not any(line.startswith("Fare") for line in out["summary"] + out["share"]), "no bare 'Fare' left")
+            check(any(line.startswith("Est. fare $") for line in out["share"]) and out["share"][-1] == ESTIMATE_NOTE,
+                  "trip share text: Est. fare, and the estimate note last")
             page.locator(".driver-trip .driver-button", has_text="Dismiss").click()
             check(page.locator("#start-trip").count() == 1, "Start trip after dismiss")
             out["saved trips"] = page.evaluate("() => JSON.parse(localStorage.getItem('warn-map-trips'))")

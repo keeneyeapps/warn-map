@@ -15,6 +15,9 @@ const MAX_SPEED_MS = 100 * 0.44704; // a jump implying more than 100 mph is a ba
 const SLOW_STREAK = 3; // consecutive slow fixes before time counts as waiting
 const METERS_PER_MILE = 1609.344;
 
+// Shown with the live meter, on the trip summary, and at the end of every shared fare text.
+export const ESTIMATE_NOTE = "Estimate only. Not a certified taximeter. Not for charging passengers.";
+
 export const TARIFF_FIELDS = [
   { key: "start", storage: "warn-map-tariff-start", label: "Start fare", unit: "$", fallback: 3.75,
     help: "Charged once when a trip starts." },
@@ -121,8 +124,9 @@ function tripShareText(trip) {
   const lines = [];
   if (trip.startPlace || trip.endPlace) lines.push(`${trip.startPlace || "Start"} → ${trip.endPlace || "End"}`);
   lines.push(`${trip.miles.toFixed(1)} mi · wait ${formatWait(trip.waitSeconds)}`);
-  lines.push(`Fare ${formatMoney(trip.fare)}`);
+  lines.push(`Est. fare ${formatMoney(trip.fare)}`);
   lines.push(`${day}, ${time(start)}–${time(end)}`);
+  lines.push(ESTIMATE_NOTE);
   return lines.join("\n");
 }
 
@@ -407,8 +411,8 @@ export function setupDriverTools({
     if (trip) {
       box.append(element("p", {
         className: "driver-trip-live", id: "driver-trip-live",
-        textContent: `Trip ${formatMiles(trip.meters)} · wait ${formatWait(trip.waitSeconds)} · ${formatMoney(tripFare())}`,
-      }));
+        textContent: `Trip ${formatMiles(trip.meters)} · wait ${formatWait(trip.waitSeconds)} · Est. fare ${formatMoney(tripFare())}`,
+      }), element("p", { className: "driver-estimate-note", id: "driver-estimate-note", textContent: ESTIMATE_NOTE }));
       const end = element("button", { type: "button", className: "driver-trip-button", id: "end-trip", textContent: "End trip" });
       end.addEventListener("click", endTrip);
       box.append(end);

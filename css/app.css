@@ -1163,6 +1163,16 @@ html[data-app="meter"] .settings-panel {
   box-shadow: 0 2px 12px rgb(0 0 0 / 28%);
 }
 
+.driver-estimate-note {
+  margin: 0;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgb(23 27 29 / 96%);
+  color: #b9c4c3;
+  font-size: 11px;
+  font-weight: 400;
+}
+
 .driver-trip-button {
   min-height: 44px;
   padding: 0 16px;

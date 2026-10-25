@@ -101,18 +101,18 @@ def share_test(pw, out, console, external, page_path, with_fare):
         _soft(lines[3] == '1 reported hazard along your route:', lines[3], 137)
         _soft(lines[4] == f'  rough road, both lanes, {hazard_distance} ahead (reported 20 d ago)', lines[4], 138)
         if with_fare:
-            expected_fare = page.evaluate("async (miles) => `Fare $${(await import('./js/driver.js')).fareFor(miles).toFixed(2)}`", float(total.group(1).split()[0]))
+            expected_fare = page.evaluate("async (miles) => `Est. fare $${(await import('./js/driver.js')).fareFor(miles).toFixed(2)}`", float(total.group(1).split()[0]))
             _soft(lines[5] == fare == expected_fare, (lines[5], fare, expected_fare), 139)
-            _soft(len(lines) == 6, lines, 140)
+            _soft(len(lines) == 7 and lines[6] == 'Estimate only. Not a certified taximeter. Not for charging passengers.', lines, 140)
         else:
-            _soft(len(lines) == 5 and not any('Fare' in line for line in lines), lines, 140)
+            _soft(len(lines) == 5 and not any('fare' in line.lower() or 'Estimate' in line for line in lines), lines, 140)
         page.screenshot(path=os.path.join(SHOTS, "route-share-destination-flag.png"))
         page.evaluate('() => { window.__mockHazards = []; return window.__WARN_MAP_TEST__.refreshHazards(); }')
         page.get_by_text('No reported hazards along your route').wait_for(timeout=10000)
         text2 = click_share(page, '__shared')
         out['share_text_no_hazards_no_rate'] = text2
         l2 = text2.split('\n')
-        _soft(l2[3] == 'No reported hazards along your route' and len(l2) == (5 if with_fare else 4), l2, 152)
+        _soft(l2[3] == 'No reported hazards along your route' and len(l2) == (6 if with_fare else 4), l2, 152)
         page.evaluate('() => { navigator.share = undefined; }')
         copied = click_share(page, '__copied')
         _soft(copied == text2, None, 157)
