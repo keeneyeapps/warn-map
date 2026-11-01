@@ -1,6 +1,10 @@
 # Master UI backend: admin login, admin actions, clear and confirm authority, fleet restrictions, tenancy (DESIGN ONLY)
 
-**Status (2026-10-19): design only, revised the same day with the owner's decisions (section 11).** No migration here is
+**Status (2026-10-19): design only, revised the same day with the owner's decisions (section 11).**
+**Corrected 2026-11-01 (owner):** customer admins sign in with a password they can change themselves, an authenticator
+optional and never required (the owner's 10-22 decision, superseding 3.1's "aal2"; the Master UI keeps its required
+authenticator); and the fleet admins' moving-clear window is **15 minutes**, not 30 (the owner's 10-19 decision was 10
+to 15 minutes; 30 was recorded wrongly). Every passage below that said otherwise is corrected in place. No migration here is
 written as a file or applied. The SQL in section 10 is for review. Belongs with the WARN repo's `docs/design/`
 (beside `zones.md`, `channel-layer.md`, `security-migrations-proposed.md`).
 
@@ -239,9 +243,9 @@ safety flags for built-in codes, because the app does.
 |---|---|---|
 | **Driver** (any app user) | nobody: anonymous by design | driver Confirm, driver Clear, retract (token) |
 | **The device that just filed a report** | the report's retract token (proves "this device filed it seconds ago", no identity) | retract (section 4.1) |
-| **Customer admin** (incl. a fleet admin) | a signed-in org user with aal2, on `org_admins`; named in every audit row | the org's own UI (its own origin, like the Master UI) |
+| **Customer admin** (incl. a fleet admin) | a signed-in org user on `org_admins`, with a **password they can change themselves; an authenticator is optional, never required** (owner, 2026-10-22, superseding "aal2" here); named in every audit row | the org's own UI (its own origin, like the Master UI) |
 | **Authorised fleet member** | a channel subscription approved as `role = 'authority'` by its org admin | the app, with the subscription credential |
-| **WARN admin (Master UI)** | signed in with aal2, on `admins` | the Master UI |
+| **WARN admin (Master UI)** | signed in with aal2 (authenticator **required**, unchanged), on `admins` | the Master UI |
 
 **Public hazards have no owner.** A driver report is anonymous: nothing records who filed it, which fleet it came from,
 or who confirmed it, and no rule below grants anyone a right *because they reported or confirmed* a hazard. The
@@ -291,7 +295,7 @@ scene becomes a separate type (police only, so parks may not clear one), and eac
 | Hazard kind | Recognised by | Who may confirm | Who may clear early | Everyone else |
 |---|---|---|---|---|
 | **Ordinary** (not moving, no authority hold) | `source = 'driver'`, catalog `is_moving = false`, no hold | any driver (046 spacing and bound); an org whose type has `may_confirm` for the category, which places an authority hold (row 4) | the filing device by retract (seconds); any driver (driver Clear); any customer admin (org clear); WARN admin. All but WARN admin are subject to the caps (section 7) | not applicable |
-| **Moving** (animals incl. moose, pedestrians) | catalog `is_moving = true` (missing code = moving) | any driver (Confirm runs the type's own countdown rules, 037); an authority confirm is recorded as corroboration only | the filing device by retract (seconds); **any fleet admin **any fleet admin within the moving-clear window** (30 min after the report, section 4.2); WARN admin. Otherwise nobody: it expires on its own countdown | driver Clear is refused, as today |
+| **Moving** (animals incl. moose, pedestrians) | catalog `is_moving = true` (missing code = moving) | any driver (Confirm runs the type's own countdown rules, 037); an authority confirm is recorded as corroboration only | the filing device by retract (seconds); **any fleet admin within the moving-clear window** (15 min after the report, section 4.2); WARN admin. Otherwise nobody: it expires on its own countdown | driver Clear is refused, as today |
 | **Admin-planted** (tests; hidden) | `source = 'planted_test'` | nobody | the admin who planted it, and the Master UI | never visible to them |
 | **Under an authority hold** | `held_by_org_type` set | an org of an authorised type for the category (refreshes the hold); drivers may still Confirm (corroboration, freshness), which never changes the hold | any org whose type has `may_clear` for the held category; WARN admin | **recorded as a dispute** (3.4), not cleared |
 | **Any hazard** | not applicable | not applicable | **WARN admin, always** (3.5) | not applicable |
@@ -386,7 +390,7 @@ When a driver, or a customer admin of a type not authorised for the category, tr
 -- Takes no identity of any kind: drivers stay anonymous.
 clear_hazard_v2(p_hazard_id bigint)
   returns text   -- 'cleared' | 'disputed' | 'refused_moving' | 'refused_planted' | 'cap' | 'not_found'
-org_clear_hazards(p_ids bigint[], p_reason text)                 -- customer admin (aal2, org_admins); moving hazards
+org_clear_hazards(p_ids bigint[], p_reason text)                 -- customer admin (org_admins; aal1 or aal2); moving hazards
   returns table(hazard_id bigint, outcome text)                  -- only inside the moving-clear window (4.2)
 org_confirm_hazard(p_hazard_id bigint, p_note text)              -- customer admin or authority credential; places a hold
   returns text   -- 'held' | 'refreshed' | 'not_authorised' | 'not_found'
@@ -476,16 +480,17 @@ report, with correction at the press position.
 
 ### 4.2 Minutes: a fleet admin clears a moving hazard inside the window
 
-- **Who and when:** after the retract window, **any fleet admin** may clear a **moving** hazard (`is_moving`) within
-  **30 minutes of its report** (decided), through `org_clear_hazards`.
-- **The window is a server-side setting:** `app_settings` (key `moving_clear_window_minutes`, value 30), read by
+- **Who and when:** after the retract window, **any fleet admin** may clear a **moving** hazard (`is_moving`: moose and
+  the other animals, pedestrians) within **15 minutes of its report** (decided by the owner 2026-10-19 as 10 to 15
+  minutes; confirmed 15 on 2026-11-01, correcting the 30 first recorded here), through `org_clear_hazards`, audited.
+- **The window is a server-side setting:** `app_settings` (key `moving_clear_window_minutes`, value 15), read by
   `org_clear_hazards` on every call. It changes without an app release: `admin_set_setting(p_key, p_value, p_reason)`,
   Master UI only, audited, bounded to 0 to 120 minutes (0 turns fleet early-clearing off). Apps never read it; the
   server enforces it.
 - **How they find it:** by location and type, typically because a driver phoned in a mistake.
 - **Hazards are not tagged by fleet**, so any fleet's admin could clear any moving hazard inside that window, including
   one another fleet's driver filed. **That is accepted** because the window is short, the fleet admin is a named
-  signed-in account (aal2) in the audit row of every clear, and those clears are **subject to the caps** (section 7).
+  signed-in account in the audit row of every clear, and those clears are **subject to the caps** (section 7).
   After the window, a moving hazard runs its own countdown; only the Master UI can end it early.
 - **Not ownership:** this is a time-limited permission granted to a role (fleet admin), not a right over "their"
   reports. No fleet has reports.
@@ -820,7 +825,8 @@ every edge, and a `fleet.road_rules(id, org_id, way_ids bigint[], kind, …)` ta
 
 - **`orgs`** (not the orphan `tenants`): `id`, `name`, `type` (section 3.2), `region_ids` (its service area), and
   `created_at`.
-- **`org_admins`:** `user_id` and `org_id`, with aal2 required. Kept apart from `admins`, so an org admin can never
+- **`org_admins`:** `user_id` and `org_id`. Password sign-in, changeable by the user; an authenticator optional, never
+  required (owner, 2026-10-22). Kept apart from `admins`, so an org admin can never
   pass `require_admin()`.
 - **Per-org reads:** an org sees its own action history (holds it placed, clears it made, and "Cleared by WARN admin"
   where the Master UI overrode one of its actions), disputes on hazards its type is authorised for, its own road
@@ -857,8 +863,9 @@ written against the right counts.
 1. **Both admin accounts are one person.** Two accounts cover a lost device, not the owner's absence. The continuity
    runbook (8.1) is the answer and is required.
 2. **Authority holds can be abused by a compromised org account** (holding real hazards so drivers cannot clear them).
-   Mitigation: disputes surface to WARN as well as to authorised orgs, at a higher threshold; the Master UI override;
-   org admins need aal2.
+   Mitigation: disputes surface to WARN as well as to authorised orgs, at a higher threshold; the Master UI override.
+   (Org admins no longer need aal2, owner 2026-10-22, so a stolen password is enough: the audit rows, the caps and the
+   per-org clear alert are what is left, and an org admin may add an authenticator.)
 3. **Any fleet admin can clear any moving hazard inside the window** (4.2), not only ones their own drivers filed.
    Accepted: short window, named in the audit log, capped. Watch the audit log for a fleet admin clearing far from its
    service area.
@@ -894,7 +901,7 @@ revoke a compromised account (1.6), restore cleared hazards (3.8), and keep the 
 5. The Master UI on its own origin.
 6. **052:** orgs (with `public_display_label`), `org_admins`, `category_authority`, the hold columns (with
    `held_display_label`) and `public_hazards.confirmed_by`, `hazard_disputes`, `org_confirm_hazard`, `org_clear_hazards`
-   (with the 30-minute moving-clear window read from `app_settings`), the `org_clear_burst` alert with its bulk-restore
+   (with the 15-minute moving-clear window read from `app_settings`), the `org_clear_burst` alert with its bulk-restore
    action, `clear_hazard_v2`, and the tier skeleton (`category_authority`, `type_authority`), completed with the first
    municipality.
 7. **053:** regional types, quick buttons and `get_client_config`, plus the server copy of the app's safety skeleton,
@@ -1047,7 +1054,7 @@ commit;
 5. **Customer admins may clear public hazards**, under the authority model, always audited and subject to the caps:
    - ordinary hazards by any driver or customer admin;
    - moving hazards expire on their own countdown, with early clear by the filing device's retract (seconds), any
-     fleet admin within 30 minutes of the report (a server setting), or the Master UI;
+     fleet admin within 15 minutes of the report (a server setting, 0 turns it off), or the Master UI;
    - planted test hazards by their planter and the Master UI;
    - hazards under an authority hold by orgs of a type authorised for the category, plus the Master UI;
    - org types and category tiers decide who may confirm or clear what. (3, 6)
@@ -1059,7 +1066,7 @@ commit;
    message or notice and is never attached to a public hazard: one overlay, not two. Fleet-private hazards and
    notices go through the channel (or later a fleet PWA), never into the public hazard data. (4.0)
 8. **Clearing a wrong report:** the filing device retracts within seconds with the existing token. After that, any
-   fleet admin may clear a moving hazard within 30 minutes of its report (a server setting), found by location and type. Hazards are
+   fleet admin may clear a moving hazard within 15 minutes of its report (a server setting), found by location and type. Hazards are
    not tagged by fleet, so any fleet's admin could do it; accepted because the window is short and every clear is
    audited and capped. The org-id tag was not chosen (4.4). (4.1, 4.2)
 
@@ -1089,8 +1096,9 @@ commit;
 18. **Authority holds show the authority's public name** ("Confirmed by <department>"), from a label WARN sets per org,
     copied onto the held row. Driver reports never carry a name. (3.3)
 
-19. **The moving-hazard early-clear window for fleet admins is 30 minutes,** held as a server setting
-    (`app_settings`) that changes without an app release. (4.2)
+19. **The moving-hazard early-clear window for fleet admins is 15 minutes,** held as a server setting
+    (`app_settings`, 0 turns it off) that changes without an app release; every such clear is audited. (Corrected
+    2026-11-01 from 30: the owner's 10-19 decision was 10 to 15 minutes.) (4.2)
 20. **Every clear records who, when and a reason code:** `mistaken` (not there) or `resolved` (moved on). The moose
     study counts `resolved` clears as real sightings that ended early, and excludes `mistaken` ones. (3.7)
 21. **Restore** is one click from the audit record. Automatic restore is by rule only: option 1 (alert plus one-click
@@ -1106,6 +1114,9 @@ commit;
     single session per account from `auth.sessions`; the page signs out globally after 30 minutes idle. (1.2)
 26. **A continuity runbook is required,** written as its own step, with secrets sealed separately (two copies,
     different places, including each account's second MFA authenticator). (8.1)
+27. **Customer-admin sign-in (owner, 2026-10-22):** a password the user can change themselves; an authenticator is
+    optional, never required. The Master UI keeps its required authenticator. Supersedes "aal2" for customer admins
+    in 3.1 and 6. (3.1, 6)
 
 ### Still open
 
