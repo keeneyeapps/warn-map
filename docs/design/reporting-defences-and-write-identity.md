@@ -1,6 +1,6 @@
 # Reporting defences and a write identity for WARN Drive (PROPOSAL, nothing applied)
 
-**Status (2026-10-19): migration 045 APPLIED and verified; everything else design only.** 045 (the
+**Status (2026-10-19): migration 045 APPLIED and verified; everything else design only.** **Renumbered 2026-11-09 (WARN repo, files only):** the migrations called 046, 047 and 048 here are the files `069_confirm_spacing_and_bound.sql`, `070_clear_area_cap.sql` and `071_insert_cap.sql`, and 050 is `068_provenance.sql`; inside the files every name keeps the old number. 045 (the
 insert-velocity observation; 044 belongs to the report descriptor) was applied to the linked project on
 2026-10-19 at 17:26 UTC by CLI and verified read-only (`WARN/supabase/scratch/verify_045.sql`: V1 and V5 all
 PASS, both live counts on the new index; V2-V4 are insert paths, covered by the local run in section 5 only).
