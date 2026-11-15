@@ -1,10 +1,10 @@
 # Reporting defences and a write identity for WARN Drive (PROPOSAL, nothing applied)
 
-**Status (2026-10-19): migration 045 APPLIED and verified; everything else design only.** **Renumbered 2026-11-09 (WARN repo, files only):** the migrations called 046, 047 and 048 here are the files `069_confirm_spacing_and_bound.sql`, `070_clear_area_cap.sql` and `071_insert_cap.sql`, and 050 is `068_provenance.sql`; inside the files every name keeps the old number. 045 (the
+**Status (2026-10-19): migration 045 APPLIED and verified; everything else design only.** **Update 2026-11-15: 046, 047 and 048 were written as files 069, 070 and 071 (with 050 as 068) and applied to the live project on 2026-11-13; this page keeps the old numbers.** **Renumbered 2026-11-09 (WARN repo, files only):** the migrations called 046, 047 and 048 here are the files `069_confirm_spacing_and_bound.sql`, `070_clear_area_cap.sql` and `071_insert_cap.sql`, and 050 is `068_provenance.sql`; inside the files every name keeps the old number. 045 (the
 insert-velocity observation; 044 belongs to the report descriptor) was applied to the linked project on
 2026-10-19 at 17:26 UTC by CLI and verified read-only (`WARN/supabase/scratch/verify_045.sql`: V1 and V5 all
 PASS, both live counts on the new index; V2-V4 are insert paths, covered by the local run in section 5 only).
-The observation week runs from that moment. 046, 047 and 048 are not written.
+The observation week runs from that moment. (As of 2026-10-19 046, 047 and 048 were not written; since 2026-11-13 they are applied as files 069, 070 and 071.)
 Belongs with the WARN repo's `docs/design/security-migrations-proposed.md`; it lives here because that repo was
 read-only for this session. Move it there when accepted.
 
@@ -80,7 +80,7 @@ Never the position of the refused report: `security_events` is admin-readable an
 someone's location.
 
 **Order.** Ship it in two steps: an observation trigger first (migration 045 below: counts and logs, refuses
-nothing, touches no RPC), a week of real numbers, then the enforcement edit to v3 (048) with the thresholds
+nothing, touches no RPC), a week of real numbers, then the enforcement edit to v3 (048, file 071) with the thresholds
 confirmed or adjusted. 027 did the same with `clear_burst` before 024's cap was trusted.
 
 **What the observation pushes (decided 2026-10-19).** Two event kinds. `insert_velocity_observed` (global ≥ 30
@@ -177,9 +177,9 @@ never for driver reports.
    logs, and 027's push policy taught that a row can be born `log_only`. No RPC changes. Reversible by the
    rollback file beside it. (044 is the report-descriptor migration, `WARN/docs/design/report-descriptor.md`.)
 2. One week of `security_events` reading; confirm or adjust the thresholds in 1a.
-3. **046: Confirm spacing and bound** (1b). Smallest RPC edit; nothing on Android changes.
-4. **047: clear per-area cap, minimum age, backstop 40** (1c).
-5. **048: insert cap enforcement in v3** (1a), the only edit to the 14 KB v3 body; takes the advisory lock
+3. **046 (file 069): Confirm spacing and bound** (1b). Smallest RPC edit; nothing on Android changes.
+4. **047 (file 070): clear per-area cap, minimum age, backstop 40** (1c).
+5. **048 (file 071): insert cap enforcement in v3** (1a), the only edit to the 14 KB v3 body; takes the advisory lock
    045 deliberately does not; verify with a rolled-back burst as 024/029 did.
 6. The three records in part 3, then `js/report.js` on `warn.html` only.
 7. Part 2 (ii) only if abuse appears.
@@ -189,7 +189,7 @@ never for driver reports.
 **Numbering (resolved 2026-10-19).** 044 stays with the report-descriptor migration
 (`WARN/docs/design/report-descriptor.md` l.29; `WARN/CLAUDE.md` records the same). `WARN/supabase/migrations/`
 ends at 043 and nothing in WARN's docs reserves anything past 044, so the observation is **045**, and the later
-steps in section 4 shift to 046 (Confirm), 047 (Clear) and 048 (enforcement). The 2026-10-18 and early
+steps in section 4 shift to 046 (Confirm), 047 (Clear) and 048 (enforcement), which became files 069, 070 and 071 on 2026-11-09. The 2026-10-18 and early
 2026-10-19 drafts called this migration 044; every file and reference has been renamed.
 
 **Files (2026-10-19).** Canonical copies under `docs/design/sql/` in this repo; the migration and its rollback
@@ -232,7 +232,7 @@ runs below, whose method is in the repo and re-runnable.
   instant can both write an event; the rolling check keeps it to about one per window, and 027's one push
   per kind per hour makes a second row free. An exact once-per-window needs an advisory lock or a unique
   index, and either would make one hazard insert wait on another's transaction, which this step forbids.
-  048 (enforcement) will take the lock; 045 must not.
+  048 (file 071, enforcement) takes the lock; 045 must not.
 - **Ownership stated.** The function is SECURITY DEFINER and must be owned by the owner of
   `hazard_audit_log` and `security_events` (postgres, which the CLI apply gives). Both tables have RLS on
   with no policy for any other role, so a copy owned by anyone else would count zero rows and fail to log,
@@ -392,12 +392,12 @@ PASS migration re-applies after rollback
   It is now log-only, so firing on honest use costs a row, not a push. [GAP] Whether three honest same-type
   reports inside 2 km in 15 minutes are common here (one moose walking a road past three cabs does it,
   since positions over 300 m apart are separate rows). The observation week answers it; if the events show
-  it is routine, raise the area warn level before 048 turns it into a cap.
+  it is routine, raise the area warn level before 048 (file 071) turned it into a cap.
 - **The composite index was never chosen.** With four types at 25% each the planner preferred the
   `inserted_at` index plus a filter over the ~1,300 rows in the 15-minute window; with the live
   distribution (MOOSE dominant) it will prefer it more. [I] Either plan touches only the window. After the
   observation week, read `pg_stat_user_indexes.idx_scan` for `hazard_audit_log_type_inserted_at_idx`; if
-  it is zero, drop it in 046 and save a B-tree write per insert.
+  it is zero, drop it in 046 (file 069) and save a B-tree write per insert.
 - **Cost.** About 6.2 ms per insert with the trigger against 1.3-1.5 ms without, measured with ~900 rows in
   the 10-minute window, about 90x the busiest real window ever recorded (10). [I] With the live volume the
   three counts scan a dozen rows and the overhead is well under a millisecond; the subtransaction the
