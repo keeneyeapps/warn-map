@@ -1,7 +1,8 @@
 import * as maplibregl from "../vendor/maplibre-gl.js";
 import { REGION_FILE } from "./config.js";
 import { setHazardPopupRenderer, startHazardLayer } from "./hazards.js";
-import { createMap } from "./map.js";
+import { guardBasemap } from "./basemap-guard.js";
+import { basemapSourceUrl, createMap } from "./map.js";
 import { setupRouting } from "./routing.js";
 
 const MOVING_SPEED_MS = 1.5;
@@ -250,7 +251,20 @@ map.on("dragstart", (event) => {
   renderLocateButton();
 });
 
+// The basemap guard (js/basemap-guard.js): retries a basemap that failed to load, then offers "Map not loaded. Tap to retry".
+// "Drawn" is basemap features on screen. On localhost with ?test=1 the page exposes it and takes shorter timings.
+const BASEMAP_TEST_MODE = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname)
+  && new URLSearchParams(location.search).get("test") === "1";
+
 map.once("style.load", () => {
+  const basemapGuard = guardBasemap(map, {
+    sourceId: "protomaps",
+    url: basemapSourceUrl(),
+    box: document.querySelector("#map-retry"),
+    button: document.querySelector("#map-retry-button"),
+    ...((BASEMAP_TEST_MODE && globalThis.__WARN_BASEMAP_MS) || {}),
+  });
+  if (BASEMAP_TEST_MODE) globalThis.__WARN_BASEMAP_TEST__ = { map, onScreen: () => basemapGuard.onScreen() };
   let hazardLayer;
   hazardLayer = startHazardLayer(map, {
     onHazardsUpdate: (features) => {

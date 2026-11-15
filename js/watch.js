@@ -4,7 +4,8 @@
 import * as maplibregl from "../vendor/maplibre-gl.js";
 import { REGION_FILE } from "./config.js";
 import { formatHazardAge, openHazardPopup, startHazardLayer } from "./hazards.js";
-import { createMap } from "./map.js";
+import { guardBasemap } from "./basemap-guard.js";
+import { basemapSourceUrl, createMap } from "./map.js";
 import { loadDescriber } from "./place-describe.js";
 
 const POLL_MS = 30_000;
@@ -280,6 +281,9 @@ globalThis.setTimeout(() => {
 globalThis.setTimeout(startPlaceData, (TEST_MODE && Number(globalThis.__WARN_WATCH_PLACE_FALLBACK_MS)) || PLACE_DATA_FALLBACK_MS);
 
 map.once("style.load", () => {
+  // The same automatic retries as the Map (js/basemap-guard.js), with no message or button: the kiosk has nobody to tap it,
+  // and its own stuck handling above (a status line, then a quiet reload) stays the last resort.
+  guardBasemap(map, { sourceId: BASEMAP_SOURCE, url: basemapSourceUrl(), box: null, button: null });
   hazardLayer = startHazardLayer(map, { intervalMs: POLL_MS, onHazardsUpdate, onStatus });
   if (TEST_MODE) {
     globalThis.__WARN_WATCH_TEST__ = {

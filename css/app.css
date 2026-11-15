@@ -1763,3 +1763,39 @@ html[data-app="watch"] #map {
     margin: 0 0 1mm;
   }
 }
+
+/* "Map not loaded. Tap to retry" (js/basemap-guard.js). Shown only when the basemap has not drawn after its automatic retries.
+   It sits in the middle of the map, centred, below the status stack and the map controls (z-index), so it never covers the
+   status, the route bar, the locate and settings buttons or the zoom control, and it goes away by itself once the map draws.
+   The button is a full-width 56 px target. */
+.map-retry {
+  position: fixed;
+  z-index: 2;
+  left: 50%;
+  top: calc(var(--header-offset) + (100dvh - var(--header-offset)) / 2);
+  width: min(320px, calc(100vw - 32px));
+  transform: translate(-50%, -50%);
+}
+
+.map-retry[hidden] {
+  display: none;
+}
+
+.map-retry-button {
+  display: block;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 16px;
+  border: 3px solid var(--brand-yellow);
+  border-radius: 12px;
+  background: #171b1d;
+  color: #f4f3ed;
+  font: 700 18px/1.25 system-ui, -apple-system, sans-serif;
+  text-align: center;
+  cursor: pointer;
+}
+
+.map-retry-button:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 3px;
+}
